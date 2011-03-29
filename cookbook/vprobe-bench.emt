@@ -1,4 +1,4 @@
-# Copyright 2008, VMware, Inc. All rights reserved.
+# Copyright 2008-2011, VMware, Inc. All rights reserved.
 
 ## A simple benchmark that measures the CPU cost of some salient vprobe
 ## operations. We pretty much rely on the Emmett compiler being unsophisticated

@@ -1,4 +1,4 @@
-Copyright 2008, VMware, Inc.
+Copyright 2008-2011, VMware, Inc.
 
 A MemModel is a pointer width and access mode. E.g., 32-bit guest pointers,
 64-bit guest pointers, etc.

@@ -1,4 +1,4 @@
-Copyright 2007, VMware, Inc.
+Copyright 2007-2011, VMware, Inc.
 
 Map of identifiers to types. We use it to check the program's validity
 (we don't, e.g., assign strings to integers), to emit code (e.g.,

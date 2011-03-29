@@ -1,4 +1,4 @@
-Copyright 2007-2008, VMware, Inc.
+Copyright 2007-2011, VMware, Inc.
 
 > module Expr(Expr(StrConstExpr, IntConstExpr, IdentExpr, FuncExpr),
 >             emitExpr, emitExprs, checkExpr, exprType, makeStructRef,

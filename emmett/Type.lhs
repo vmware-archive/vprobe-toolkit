@@ -1,4 +1,4 @@
-Copyright 2007, VMware, Inc.
+Copyright 2007-2011, VMware, Inc.
 
 Emmett's type system. Primitives are integers and strings. Compound types
 are aggregates (which are typed by the number and type of primitive

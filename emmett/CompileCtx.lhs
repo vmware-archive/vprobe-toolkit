@@ -1,4 +1,4 @@
-Copyright 2008, VMware, Inc. All rights reserved.
+Copyright 2008-2011, VMware, Inc. All rights reserved.
 
 CompileCtx -- The compiler context.
 

@@ -1,4 +1,4 @@
-Copyright 2007-2008, VMware Inc. All rights reserved.
+Copyright 2007-2011, VMware Inc. All rights reserved.
 
 > module Parse where
 > import Program

@@ -1,4 +1,4 @@
-Copyright 2007, VMware, Inc.
+Copyright 2007-2011, VMware, Inc.
 
 A "Probe" is a tree in the parse forest of an Emmett program: one of a
 declaration, function definition, or probe definition.

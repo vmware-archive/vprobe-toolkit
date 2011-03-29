@@ -1,4 +1,4 @@
-Copyright 2007, VMware, Inc.
+Copyright 2007-2011, VMware, Inc.
 
 > module Ident(Ident, makeIdent, emitIdent, setIdentOff, getIdentOff)
 >   where

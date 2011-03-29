@@ -1,4 +1,4 @@
-Copyright 2007-2008, VMware, Inc.
+Copyright 2007-2011, VMware, Inc.
 
 This is the main module of a simple compiler for Emmett, a small language
 with C-like expressions, block structure, etc. This compiler emits vp
