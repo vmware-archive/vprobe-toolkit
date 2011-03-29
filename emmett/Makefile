@@ -15,8 +15,10 @@ endif
 
 ifeq ($(OSTYPE), Win32)
 EXE_EXTENSION	:= .exe
+CP		:= copy
 else
 EXE_EXTENSION	:=
+CP		:= cp
 endif
 
 SRCDIR		:= .
@@ -25,7 +27,7 @@ TGTDIR		:=
 # Ocaml object files. Must be ordered by dependencies.
 ML_OBJS = $(addprefix $(TGTDIR)/,					    \
 		defaults.cmo globals.cmo memmodel.cmo ast.cmo symtab.cmo    \
-		domain.cmo predef.cmo type.cmo actions.cmo lower.cmo vp.cmo \
+		predef.cmo type.cmo actions.cmo lower.cmo vp.cmo \
 		lexer.cmo parser.cmo main.cmo)
 
 OCAMLC	  = ocamlc
@@ -62,7 +64,7 @@ $(TGTDIR)/parser.ml: $(SRCDIR)/parser.mly
 
 # Use defaults for the hosted compiler
 $(TGTDIR)/defaults.ml: $(SRCDIR)/defaults.hosted.ml
-	$(RM) -F $@
+	$(RM) -f $@
 	$(CP) $< $@
 
 $(TGTDIR)/%.ml: $(SRCDIR)/%.ml
@@ -79,9 +81,6 @@ $(TGTDIR)/ast.cmo: $(addprefix $(TGTDIR)/, \
 $(TGTDIR)/symtab.cmo: $(addprefix $(TGTDIR)/, \
 	memmodel.cmo globals.cmo defaults.cmo ast.cmo)
 
-$(TGTDIR)/domain.cmo: $(addprefix $(TGTDIR)/, \
-	symtab.cmo globals.cmo defaults.cmo ast.cmo)
-
 $(TGTDIR)/predef.cmo: $(addprefix $(TGTDIR)/, \
 	symtab.cmo ast.cmo)
 
@@ -89,18 +88,18 @@ $(TGTDIR)/type.cmo: $(addprefix $(TGTDIR)/, \
 	symtab.cmo predef.cmo memmodel.cmo globals.cmo ast.cmo)
 
 $(TGTDIR)/actions.cmo: $(addprefix $(TGTDIR)/, \
-	type.cmo symtab.cmo predef.cmo domain.cmo ast.cmo)
+	type.cmo symtab.cmo predef.cmo ast.cmo)
 
 $(TGTDIR)/lower.cmo: $(addprefix $(TGTDIR)/, \
 	type.cmo symtab.cmo memmodel.cmo globals.cmo ast.cmo)
 
 $(TGTDIR)/vp.cmo: $(addprefix $(TGTDIR)/, \
 	type.cmo symtab.cmo predef.cmo globals.cmo \
-	domain.cmo defaults.cmo ast.cmo)
+	defaults.cmo ast.cmo)
 
 $(TGTDIR)/main.cmo: $(addprefix $(TGTDIR)/, \
 	vp.cmo type.cmo symtab.cmo predef.cmo parser.cmo \
-	lower.cmo lexer.cmo globals.cmo domain.cmo defaults.cmo)
+	lower.cmo lexer.cmo globals.cmo defaults.cmo)
 
 $(TGTDIR)/lexer.cmo: $(addprefix $(TGTDIR)/, \
 	symtab.cmo parser.cmo)
