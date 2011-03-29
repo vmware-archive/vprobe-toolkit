@@ -1,0 +1,6 @@
+(version 0.2)
+(definteger foo)
+(defstring nameStr)
+(defun name(str arg )( do  ( sprintf    str  "fooble: %d\n"  arg ))str)(defun voidFunc(arg )( do  ( printf    "void function with an arg!\n" )))(defun voidFunc2()( do  ( printf    "void function with no args\n" )))
+ ;;;;;
+(vprobe MyFunc ( do  ( setint foo    (returnsInt))( function    foo   (+ 2   (* 3   (bar 13 ) ) ) )( vafunc    foo )( vafunc    foo  "args are fun!\n" )( vafunc    foo  "args are fun"  "-ctional\n" )( name    nameStr  12 )( printf    "%s\n"  nameStr )( voidFunc    1 )( voidFunc2   )))

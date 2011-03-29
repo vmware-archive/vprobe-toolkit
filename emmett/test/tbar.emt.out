@@ -1,0 +1,6 @@
+(version 0.2)
+(definteger foo)
+(defaggr ticks 1 0)
+
+ ;;;;;
+(vprobe GUEST:nt!NtCreateThread ( do  ( setint foo   32)( aggr  ticks ( RIP) () foo)))

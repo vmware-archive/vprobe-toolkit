@@ -1,0 +1,13 @@
+SimpleIf if (1) b = 19;
+SimpleIfElse if (2) aWasTrue = 1; else aWasTrue = 0;
+
+# nested, without braces. "else" should stick to the most recent "if"
+NestedIfElseNoBrace
+if (3)
+ 	outer = 1;
+else if (4)
+	innerTrue = 1;
+else innerFalse = 1;
+
+QuestionMarkColon
+        logint(VCPUID == 0 ? 0 : 12);

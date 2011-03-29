@@ -1,0 +1,3 @@
+# verify that enum ordering works the way it ought to.
+enum { A = 12, B = 3, C };
+VMM1Hz printf("%d, %d, %d\n", A, B, C);

@@ -1,0 +1,10 @@
+HV_Exit tsc = TSC;
+HV_Resume ag[VMCS_CS & 3, VMCS_RIP] <- TSC - tsc;
+VMM1Hz {
+   /* Blocks work! */
+   bits = 12;
+   operatorPrecedence = 1 + 2 * 3 > 12 && ~bits == 3;
+   if (operatorPrecedence == 3 && bits==0xdeadbeef) {
+      foo=bits;
+   }
+}

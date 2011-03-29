@@ -1,0 +1,7 @@
+VMM1Hz {
+   strvar = "myStr";
+   if (strcmp(strvar, "foo")) {
+      printf("garbanzo: %d\n", 666);
+      printf("mangofondue: %s\n", strvar);
+   }
+}

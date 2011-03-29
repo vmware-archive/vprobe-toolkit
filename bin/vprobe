@@ -1,0 +1,132 @@
+#!/bin/bash
+
+# Copyright 2007-2008, VMware, Inc. All rights reserved.
+# 
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met:
+# 1. Redistributions of source code must retain the above copyright notice,
+# this list of conditions and the following disclaimer.
+# 2. Redistributions in binary form must reproduce the above copyright
+# notice, this list of conditions and the following disclaimer in the
+# documentation and/or other materials provided with the distribution.
+# 3. Neither the name of VMware, Inc. nor the names of its contributors may
+# be used to endorse or promote products derived from this software with
+# specific prior written permission.
+# THIS SOFTWARE IS PROVIDED BY THE AUTHOR AND CONTRIBUTORS AS IS'' AND ANY
+# EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+# WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+# DISCLAIMED. IN NO EVENT SHALL THE AUTHOR OR CONTRIBUTORS BE LIABLE FOR ANY
+# DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+# (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+# SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+# CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+# LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+# OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH
+# DAMAGE.
+
+function die {
+   echo $1 1>&2
+   exit 1
+}
+
+COMPILER=emmett
+if [ \( -z "$VMTREE" \) -o \( -z "$VMBLD" \) -o \
+     \( -z "$VMPROD" \) ]; then
+   VMRUN=/usr/bin/vmrun
+   PATH=$PATH:$(dirname $0)
+else
+   echo "Using the devel version from $VMTREE"
+   VMRUN=$VMTREE/build/$VMBLD/$VMPROD/vmrun
+   if ! [ -x $VMRUN ]; then
+      echo "Building vmrun ..."
+      (cd $VMTREE; make vmrun) || die "vmrun build failed"
+   fi
+   PATH=$PATH:$VMTREE/vmcore/support/vprobes/util
+   if ! [ -x $VMRUN ]; then
+      die "I can't find the vmrun binary in $VMRUN."
+   fi
+fi
+
+function usage {
+   echo "usage: $0 [-a|l|q|r] [-c emmettPrg] [vpsourcefile] /path/to/vm"
+   echo "   -a auto-dump and clear hash tables"
+   echo "   -c 'prg': run 'prg' instead of file"
+   echo "   -l just list probes for the given VM"
+   echo "   -q quiet: just load and exit"
+   echo "   -r just reset the given VM and exit"
+   echo "   -s pretty-print stack output"
+   echo "   -h show this message"
+   exit $1
+}
+
+function die {
+   echo $1 1>&2
+   exit $2
+}
+compileargs=""
+cmd=""
+quiet=""
+resetvm=""
+stacks=""
+listvm=""
+while getopts "ac:l:qr:sh" curopt; do
+   case $curopt in
+   a) compileargs="-a" ;;
+   c) cmd="$OPTARG" ;;
+   h) usage 0 ;;
+   l) listvm="$OPTARG" ;;
+   q) quiet="true" ;;
+   r) resetvm="$OPTARG" ;;
+   s) stacks="true" ;;
+   --) break ;;
+   ?) usage 1 ;;
+   esac
+done
+shift $((OPTIND - 1))
+
+if [ -n "$listvm" ]; then
+   exec $VMRUN vprobeListProbes $listvm
+fi
+
+if [ -n "$resetvm" ]; then
+   exec $VMRUN vprobeReset $resetvm > /dev/null 2>&1
+fi
+
+if [ $# -lt 1 ]; then
+   usage 1
+fi
+# Collect all the source files. The last remaining argument had better be
+# a VM.
+while [ $# -gt 1 ]; do
+   files="$files $1"
+   shift 1
+done
+
+if [ $# -lt 1 ]; then
+   usage
+   exit 1
+fi
+
+VM=$1
+VMDIR=$(dirname $VM)
+
+# If there's a preload in the vm directory, load it as well.
+if [ -f "$VMDIR/preload.emt" ]; then
+   files="$VMDIR/preload.emt $files"
+fi
+out=$($COMPILER -c "$cmd" $compileargs $files) || die "compile error" 2
+VMRUNOUT=$($VMRUN vprobeLoad $VM "$out" 2>&1)|| die "vmrun error:$VMRUNOUT" 3
+
+if [ -z "$quiet" ]; then
+   trap '$VMRUN vprobeReset $VM > /dev/null 2>&1; exit $stat' 2 15 9 0 1
+   if [ -n "$compileargs" ]; then
+      TAIL=vptail.pl
+   else
+      TAIL="tail -f"
+   fi
+   if [ -n "$stacks" ]; then
+      $TAIL $VMDIR/vprobe.out | vprobe-stack-filt $VM
+   else
+      $TAIL $VMDIR/vprobe.out
+   fi
+fi

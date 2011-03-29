@@ -1,0 +1,86 @@
+#!/bin/bash
+
+# Copyright 2007-2008, VMware, Inc. All rights reserved.
+# 
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met:
+# 1. Redistributions of source code must retain the above copyright notice,
+# this list of conditions and the following disclaimer.
+# 2. Redistributions in binary form must reproduce the above copyright
+# notice, this list of conditions and the following disclaimer in the
+# documentation and/or other materials provided with the distribution.
+# 3. Neither the name of VMware, Inc. nor the names of its contributors may
+# be used to endorse or promote products derived from this software with
+# specific prior written permission.
+# THIS SOFTWARE IS PROVIDED BY THE AUTHOR AND CONTRIBUTORS AS IS'' AND ANY
+# EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+# WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+# DISCLAIMED. IN NO EVENT SHALL THE AUTHOR OR CONTRIBUTORS BE LIABLE FOR ANY
+# DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+# (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+# SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+# CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+# LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+# OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH
+# DAMAGE.
+
+UTILDIR=`dirname $0`
+VPROBE=${UTILDIR}/vprobe
+
+function usage {
+   echo "usage: $0 [-m] [-n nukeInterval] [-p probe] [-s syms] <path-to-vmx>"
+   echo "   -m       : gather vmm stacks"
+   echo "   -n N     : throw away samples every N seconds"
+   echo "   -p probe : use <probe> (default: VMM10Hz for guest, IRQGeneric"
+   echo "              for vmm)"
+   echo "   -s syms  : specify symtab (default: symtab.txt for guest, monsyms"
+   echo "              for vmm)"
+   exit $1
+}
+
+NUKEINTERVAL=0
+DEFAULTSYMNM=symtab.txt
+STKFUNC="gueststack"
+PROBE="Guest_IRQ"
+while getopts "ms:p:n:" curopt; do
+   case $curopt in
+   m) echo "monvis!";
+     STKFUNC="vmmstack";
+     PROBE="MONITOR:IRQGeneric";
+     DEFAULTSYMNM=monsyms ;;
+   n) NUKEINTERVAL="$OPTARG" ;;
+   s) SYMS="$OPTARG" ;;
+   p) PROBE="$OPTARG" ;;
+   --) break ;;
+   ?) usage 0 ;;
+   esac
+done
+shift $((OPTIND - 1))
+
+if [ $# -lt 1 ]; then
+  usage 1
+fi
+
+VM=$1
+if [ -z "$SYMS" ]; then
+    SYMS=$(dirname $VM)/$DEFAULTSYMNM
+fi
+
+if [ ! -f $SYMS ]; then
+   echo no symbol file: $SYMS
+   exit 1
+fi
+
+$VPROBE -qc "string stk; $PROBE { $STKFUNC(stk); printf(\"%s\n\", stk); }" $VM
+
+# create an empty ps file
+${UTILDIR}/stacks2dot.pl < /dev/null > vprobe.dt
+dot -Tps -o vprobe.ps vprobe.dt
+
+gv --watch vprobe.ps &
+while [ : ]; do
+    sleep 5
+    tail -1000 $(dirname $VM)/vprobe.out | ${UTILDIR}/stacks_resolve.pl --commasep $SYMS | sort | uniq -c | sort -n | tail -10 | awk '{print $2}' | ${UTILDIR}/stacks2dot.pl > vprobe.dt
+    dot -Tps -o vprobe-new.ps vprobe.dt
+    cp vprobe-new.ps vprobe.ps
+done

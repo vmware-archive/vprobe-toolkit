@@ -1,0 +1,44 @@
+(version 0.2)
+(definteger a)
+(defaggr aggr0 1 0)
+(defaggr aggr1 2 0)
+(defaggr block0aggr 1 1)
+(definteger block0asgn)
+(defaggr blockaggr 1 1)
+(definteger blockscalar)
+(defaggr complicatedAggr 1 2)
+(definteger definedInFunc)
+(definteger easyAdd)
+(definteger g)
+(defaggr keylessaggr 0 0)
+(definteger myInt0)
+(definteger nakedBlock0)
+(definteger prec)
+(definteger precedence)
+(definteger scale)
+(defstring strVar)
+
+ ;;;;;
+(vprobe Arith ( setint easyAdd   3))
+ ;;;;;
+(vprobe Arithprec ( setint prec   7))
+ ;;;;;
+(vprobe Arith ( setint precedence    (&&  (== 1  2 )   (== 4  5 ) )))
+ ;;;;;
+(vprobe SimpleAsgn ( setint myInt0   3735928559))
+ ;;;;;
+(vprobe HashPlusPlus ( aggr  aggr0 ( 9) () 1))
+ ;;;;;
+(vprobe Aggr ( aggr  aggr0 ( 9) () 0))
+ ;;;;;
+(vprobe Aggr ( aggr  keylessaggr () () 0))
+ ;;;;;
+(vprobe Aggr ( aggr  complicatedAggr ( 9) ( "str1" "str2") 122))(defun function_def(a12 )( do  ( setint easyAdd    (+ 12  a12 ))( setint definedInFunc   3735928559)( setstr strVar   "testareenio!")) (^ definedInFunc  a12 ))
+ ;;;;;
+(vprobe Block ( do  ( aggr  blockaggr ( 9) ( "blockkey1") 12)( setint blockscalar   123)))
+ ;;;;;
+(vprobe If1 ( cond  (0( setint a   12))))
+ ;;;;;
+(vprobe If2 ( cond  (1( do  ( aggr  aggr1 ( 1 3) () 2)( setint scale   17)))))
+ ;;;;;
+(vprobe NestBlocks ( do  ( cond  ( (nakedPred)( setint g   12)))( cond  ( (nakedPred)( do  ( aggr  block0aggr ( 12) ( "snarf") TSC)( setint block0asgn   12))))( do  ( setint nakedBlock0   13))))

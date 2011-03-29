@@ -1,0 +1,9 @@
+HV_Exit {
+   startTSC = TSC;
+}
+
+HV_Resume {
+   if (startTSC) {
+      ag[RIP, VMCB_exitCode] <- TSC - startTSC;
+   }
+}

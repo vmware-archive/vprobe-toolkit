@@ -1,0 +1,6 @@
+string str;
+
+GUEST:system_call {
+   syscname(str, RAX);
+   printf("%s : %s\n", curprocname(), str);
+}

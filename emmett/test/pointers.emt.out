@@ -1,0 +1,7 @@
+(version 0.2)
+(definteger ptr)
+(definteger ptr2)
+(definteger ptr3)
+
+ ;;;;;
+(vprobe VMM1Hz ( do  ( setint ptr   GSBASE)( setint ptr3   KERNELGSBASE)( setint ptr2    (& (getguest  (+  (+ ptr3  16 )  8 ))  4095 ))( printf    "%d\n"   (/  (-  (+  (+ (& 255 (getguest ptr))  (& 65535 (getguest  (+ ptr  2 ))) )  (& 4294967295 (getguest  (+ ptr  4 ))) )  (getguest  (+ ptr  8 )) )  (& 4294967295 (getguest  (+ (getguest  (+ ptr2  8 ))  4 ))) ) )( printf    "%d\n"   (* (getguest  (+ ptr3  8 ))  (& 255 (getguest (getguest  (+  (+ ptr3  16 )  8 )))) ) )( printf    "%d\n"   (== (getguest  (+ ptr3  8 ))  (getguest  (+ ptr3  8 )) ) )))

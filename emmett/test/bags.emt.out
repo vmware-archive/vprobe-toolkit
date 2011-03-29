@@ -1,0 +1,8 @@
+(version 0.2)
+(defaggr a 1 0)
+(defbag b 12)
+
+ ;;;;;
+(vprobe Start ( baginsert b VCPUID TSC))
+ ;;;;;
+(vprobe Finish ( aggr  a ( VCPUID) ()  (- TSC  (bagremove b VCPUID) )))

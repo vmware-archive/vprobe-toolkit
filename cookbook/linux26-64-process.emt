@@ -1,0 +1,69 @@
+# This script provides a couple of utility functions for working with Linux
+# 2.6 guests. It defines no probes; it only provides curpid() and
+# curprocame() functions.
+
+string _procName;
+int _pidOffset;
+int _nameOffset;
+
+# guestload --
+# guestloadstr --
+#   Checked wrappers around getguest that return 0 for reads of the null
+#   page.
+int
+guestload(int addr)
+{
+   _rval = 0;
+   if (addr > 4095) {
+      _rval = getguest(addr);
+   }
+   return _rval;
+}
+
+int
+guestload32(int addr)
+{
+   return addr & 0xffffffff;
+}
+
+void
+guestloadstr(string dest, int addr)
+{
+   if (addr > 4095) {
+      getgueststr(dest, addr);
+   }
+}
+
+# curthrptr --
+#   Return pointer to kernel thread-private data for the current process
+#   on the current VCPU. This might be either GSBASE or KERNELGSBASE;
+#   testing the CPL isn't *quite* right, because there's a short window
+#   immediately after the hardware syscall where the right value is still
+#   in KERNELGSBASE.
+int
+curthrptr()
+{
+   if (_pidOffset == 0) {
+      _pidOffset = offatret("sys_getpid");
+      _nameOffset = offatstrcpy("get_task_comm");
+   }
+   if (GSBASE >= 0x100000000) {
+      _gsb = GSBASE;
+   } else {
+      _gsb = KERNELGSBASE;
+   }
+   return _gsb;
+}
+
+string
+curprocname()
+{
+   guestloadstr(_procName, _nameOffset + guestload(curthrptr()));
+   return _procName;
+}
+
+int
+curpid()
+{
+   return guestload32(_pidOffset + guestload(curthrptr()));
+}

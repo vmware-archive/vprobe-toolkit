@@ -1,0 +1,8 @@
+(version 0.2)
+(defaggr ag 1 0)
+(definteger startTSC)
+
+ ;;;;;
+(vprobe HV_Exit ( do  ( setint startTSC   TSC)))
+ ;;;;;
+(vprobe HV_Resume ( do  ( cond  (startTSC( do  ( aggr  ag ( RIP) ()  (- TSC  startTSC )))))))

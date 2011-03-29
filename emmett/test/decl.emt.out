@@ -1,0 +1,5 @@
+(version 0.2)
+(defstring strvar)
+
+ ;;;;;
+(vprobe VMM1Hz ( do  ( setstr strvar   "myStr")( cond  ( (strcmp strvar  "foo" )( do  ( printf    "garbanzo: %d\n"  666 )( printf    "mangofondue: %s\n"  strvar ))))))

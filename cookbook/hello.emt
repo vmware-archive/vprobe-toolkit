@@ -1,0 +1,4 @@
+
+VMM10Hz {
+   logstr("Hi\n");
+}

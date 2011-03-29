@@ -1,0 +1,27 @@
+memmodel guest64 {
+    typedef struct {
+        uint32  field1;
+        uint32* ptr;
+    } g64;
+    g64 *gptr;
+}
+
+memmodel vmm32 {
+    typedef struct {
+        uint32  field1;
+        uint32* ptr;
+    } v32;
+    v32 *vptr;
+}
+
+memmodel vmk {
+    typedef struct {
+        uint32  field1;
+        uint32* ptr;
+    } k64;
+    k64 *kptr;
+}
+
+VMM1Hz {
+   myint = *vptr->ptr + *gptr->ptr + *kptr->ptr;
+}

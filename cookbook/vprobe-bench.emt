@@ -1,0 +1,60 @@
+# Copyright 2008, VMware, Inc. All rights reserved.
+
+## A simple benchmark that measures the CPU cost of some salient vprobe
+## operations. We pretty much rely on the Emmett compiler being unsophisticated
+## here.
+
+# We gather a start TSC, perform N operations, then gather a completion
+# TSC and divide the difference by N. Because of host interrupts, etc.,
+# the "min" figure in the aggregates is often more repeatable and informative
+# than the "avg" figure, and the "max" figure often represents an extreme
+# outlier.
+
+void
+measure_tsc()
+{
+   start = TSC;
+   a = TSC;
+   a = TSC;
+   a = TSC;
+   a = TSC;
+   ag["tsc"] <- (TSC - start) >> 2;
+}
+
+void
+measure_phys()
+{
+   start = TSC;
+   a = getguestphys(0 << 12);
+   a = getguestphys(1 << 12);
+   a = getguestphys(2 << 12);
+   a = getguestphys(3 << 12);
+   ag["physmem"] <- (TSC - start) >> 2;
+}
+
+void
+measure_linear()
+{
+   start = TSC;
+   a = getguest(RIP);
+   a = getguest(RIP);
+   a = getguest(RIP);
+   a = getguest(RIP);
+   ag["curprocname"] <- (TSC - start) >> 2;
+}
+
+void
+measure_aggr()
+{
+   start = TSC;
+   nulla++; nulla++; nulla++; nulla++;
+   ag["null AGGR"] <- (TSC - start) >> 2;
+}
+
+USEC:5555  measure_tsc();
+USEC:888   measure_linear();
+USEC:999   measure_phys();
+USEC:777   measure_aggr();
+VMM1Hz {
+       logaggr(ag);
+}

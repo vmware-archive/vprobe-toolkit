@@ -1,0 +1,16 @@
+typedef struct teststruct {
+   uint64 my64;
+   uint8  my8;
+} teststruct;
+
+teststruct *foo;
+teststruct **bar;
+
+struct {
+   uint32 b@4;
+   uint32 c@12 - sizeof(uint32);
+} *offptr;
+
+VMM1Hz printf("barf\n", foo->my8, (*foo).my8, (*bar)->my64,
+              &foo->my8, &(*bar)->my64);
+VMMLoad printf("snarf: %d %d\n", &offptr->b, &offptr->c);

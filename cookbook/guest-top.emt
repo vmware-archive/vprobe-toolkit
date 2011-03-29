@@ -1,0 +1,4 @@
+
+USEC:10207 {
+   ticks[curpid(), curprocname()]++;
+}

@@ -1,0 +1,4 @@
+# make sure function definitions are able to emit args in non-alphabetical
+# order. Sigh.
+
+void t(int b, int a) { }

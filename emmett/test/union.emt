@@ -1,0 +1,13 @@
+typedef union {
+   uint8  a;
+   uint32 b;
+   uint64 c;
+} u;
+
+typedef struct {
+   u u1;
+   u u2;
+} s;
+
+s* sptr;
+VMM1Hz printf("%d %d %d\n", &sptr->u1, &sptr->u2, &sptr->u2.c);

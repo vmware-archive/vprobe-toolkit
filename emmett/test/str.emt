@@ -1,0 +1,7 @@
+string garth;
+
+Probe0 {
+	garth = "fooble";
+	strAggr[garth, "warb"] <- 123;
+        garth = "woobers";
+}

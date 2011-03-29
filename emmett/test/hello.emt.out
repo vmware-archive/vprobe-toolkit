@@ -1,0 +1,4 @@
+(version 0.2)
+
+ ;;;;;
+(vprobe VMM1Hz ( logint    1 ))

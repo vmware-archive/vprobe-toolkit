@@ -1,0 +1,4 @@
+VMM1Hz {
+   str = sprintf("%s:%d", "barf", 12);
+   agr[str] <- 3;
+}

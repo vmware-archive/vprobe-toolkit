@@ -1,0 +1,15 @@
+(version 0.2)
+(definteger aWasTrue)
+(definteger b)
+(definteger innerFalse)
+(definteger innerTrue)
+(definteger outer)
+
+ ;;;;;
+(vprobe SimpleIf ( cond  (1( setint b   19))))
+ ;;;;;
+(vprobe SimpleIfElse ( cond  (2( setint aWasTrue   1)) (1 ( setint aWasTrue   0))))
+ ;;;;;
+(vprobe NestedIfElseNoBrace ( cond  (3( setint outer   1)) (1 ( cond  (4( setint innerTrue   1)) (1 ( setint innerFalse   1))))))
+ ;;;;;
+(vprobe QuestionMarkColon ( logint    (cond ( (== VCPUID  0 ) 0)(1 12)) ))

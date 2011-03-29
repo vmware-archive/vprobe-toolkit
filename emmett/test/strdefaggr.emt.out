@@ -1,0 +1,5 @@
+(version 0.2)
+(defaggr agr 0 0)
+
+ ;;;;;
+(vprobe VMM1Hz ( do  ( setint str    (sprintf "%s:%d"  "barf"  12 ))( aggr  agr () () 3)))

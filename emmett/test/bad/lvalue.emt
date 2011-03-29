@@ -1,0 +1,6 @@
+/* Let's see how we deal with errors. */
+GoodProbe good = 1;
+Typeo {
+	bad = goodo; # ok to assign idents
+	0 = goodo;   # ...but not to assign to integers
+}

@@ -1,0 +1,1 @@
+Probe foo = "string" + 1;

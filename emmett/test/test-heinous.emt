@@ -1,0 +1,36 @@
+Arith easyAdd = 1 + 2;
+Arithprec prec = 1 + 2 * 3;
+Arith precedence = 1 == 2 && 4 == 5;
+SimpleAsgn myInt0 = 0xdeadbeef; 	# Trivial assignment
+HashPlusPlus aggr0[9]++; 	# Trivial assignment
+Aggr aggr0[9] <- 0;		# aggregating assignment
+Aggr keylessaggr <- 0;		# keyless aggr
+Aggr complicatedAggr[9, "str1", "str2"] <- 145 - 23;
+
+int function_def(int a12) 
+{
+   easyAdd = 12 + a12; # var defined outside of function, func arg.
+   definedInFunc = 0xdeadbeef; # var defined inside function
+   strVar = "testareenio!";
+   return definedInFunc ^ a12;
+}
+
+Block {
+	/* Do block statements grossly work? */
+	blockaggr[9, "blockkey1"]   <- 12;
+	blockscalar =123;
+}
+If1 if(0) a = 12;
+If2 if(1){  aggr1[1,3] <- 2; scale =17; } # if with a block
+
+int nakedPred();
+NestBlocks {
+	if (nakedPred())
+		g=12;
+	if (nakedPred()) {
+		block0aggr[12, "snarf"] <- TSC;
+		block0asgn=12;
+	}
+	{ nakedBlock0 = 13; }
+	
+}

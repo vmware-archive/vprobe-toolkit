@@ -1,0 +1,8 @@
+VMM10Hz {
+   count = count + 1;
+   if ((count % 7) == 0) {
+      logstr("Hi: ");
+      logint(count);
+      logstr("\n");
+   }
+}
