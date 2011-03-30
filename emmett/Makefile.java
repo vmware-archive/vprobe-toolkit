@@ -2,15 +2,12 @@
 #
 # Usage: make -f Makefile.java <options>
 # where the options are:
-#  OSTYPE=<os>    the host os type: win, linux, or mac (required)
-#  TGTDIR=<dir>   the target directory (required)
+#  OSTYPE=<os>     the host os type: win, linux, or mac (required)
+#  TGTDIR=<dir>    the target directory (required)
+#  OCAMLJAVA=<dir> path to the ocaml jar files (from cadmium distribution)
 #
-
-SRCDIR	:= .
-
-ifeq ($(OSTYPE),)
-$(error Undefined host OS type (OSTYPE))
-endif
+# See http://ocamljava.x9c.fr/ for more details regarding OCaml-Java.
+#
 
 ifneq ($(OSTYPE), win)
 ifneq ($(OSTYPE), linux)
@@ -24,13 +21,21 @@ ifeq ($(TGTDIR),)
 $(error Undefined target directory (TGTDIR))
 endif
 
+ifeq ($(OSTYPE), win)
+CP		:= copy
+else
+CP		:= cp
+endif
+
+SRCDIR		:= .
+TGTDIR		:= 
+
 PROGNAME  := emmett
 EXTENSION := .jar
 EXEC      := $(TGTDIR)/$(PROGNAME)$(EXTENSION)
 
-OCAMLROOT  := /build/toolchain/mac32/ocaml-3.11.0/bin/
-OCAMLLEX   := $(OCAMLROOT)ocamllex
-OCAMLYACC  := $(OCAMLROOT)ocamlyacc
+OCAMLLEX   := ocamllex
+OCAMLYACC  := ocamlyacc
 
 OCAMLJBIN  := $(HOME)/Downloads/ocamljava-bin-1.4/bin
 OCAMLJAVA  := java -Xss500m -Xmx700m -Xms500m -jar $(OCAMLJBIN)/ocamljava.jar
@@ -42,12 +47,14 @@ ML_OBJS   := $(addprefix $(TGTDIR)/,                                     \
 		vp.cmj lexer.cmj parser.cmj main.cmj)
 
 # Main target
-$(EXEC): $(ML_OBJS)
-	$(OCAMLLINK) -o $(EXEC) $(ML_OBJS)
+build: setup $(EXEC)
 
-$(TGTDIR)/%.ml: $(SRCDIR)/%.ml
-	$(RM) -f $@
-	$(CP) $< $@
+setup:
+	mkdir -p $(TGTDIR)
+
+# Build the executable
+$(EXEC): $(ML_OBJS)
+	$(OCAMLLINK) -o $@ $(ML_OBJS)
 
 # Generate lexer.ml
 $(TGTDIR)/lexer.ml: $(SRCDIR)/lexer.mll
@@ -57,15 +64,22 @@ $(TGTDIR)/lexer.ml: $(SRCDIR)/lexer.mll
 $(TGTDIR)/parser.ml: $(SRCDIR)/parser.mly
 	$(CP) $< $(TGTDIR)
 	$(OCAMLYACC) $(TGTDIR)/$(<F)
-	$(RM) -f $(TGTDIR)/$(<F)
-	$(RM) -f $(TGTDIR)/$(@F)i
-
-$(TGTDIR)/%.cmj: $(TGTDIR)/%.ml
-	cd $(TGTDIR) && $(OCAMLJAVA) -c  $(<F)
+	$(RM) $(TGTDIR)/$(<F)
+	$(RM) $(TGTDIR)/$(@F)i
 
 # Use defaults for the hosted compiler
 $(TGTDIR)/defaults.ml: $(SRCDIR)/defaults.hosted.ml
-	$(CP) $(<) $(@)
+	$(RM) $@
+	$(CP) $< $@
+
+# Copy source files to build directory (they are needed by ocamlc)
+$(TGTDIR)/%.ml: $(SRCDIR)/%.ml
+	$(RM) $@
+	$(CP) $< $@
+
+# Compile ocaml source code
+$(TGTDIR)/%.cmj: $(TGTDIR)/%.ml
+	cd $(TGTDIR) && $(OCAMLJAVA) -c  $(<F)
 
 # Object file dependencies
 $(TGTDIR)/ast.cmj: $(addprefix $(TGTDIR)/, \
@@ -101,6 +115,7 @@ $(TGTDIR)/parser.cmj: $(addprefix $(TGTDIR)/, \
 	symtab.cmj globals.cmj ast.cmj actions.cmj)
 
 clean:
-	$(RM) $(ML_OBJS) $(ML_OBJS:.cmj=.cmi) \
-	       $(TGTDIR)/parser.ml $(TGTDIR)/parser.mli \
-	       $(TGTDIR)/lexer.ml $(EXEC)
+	$(RM) -r $(TGTDIR)
+
+# Declare phony targets
+.PHONY: build setup clean

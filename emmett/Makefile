@@ -1,4 +1,10 @@
-PROGNAME  := emmett
+# Makefile for building the emmett compiler executable.
+#
+# Usage: make -f Makefile <options>
+# where the options are:
+#  OSTYPE=<os>    the host os type: win, linux, or mac (required)
+#  TGTDIR=<dir>   the target directory (required)
+#
 
 ifneq ($(OSTYPE), win)
 ifneq ($(OSTYPE), linux)
@@ -6,11 +12,6 @@ ifneq ($(OSTYPE), mac)
 $(error Invalid host OS type (must be win, linux, or mac))
 endif
 endif
-endif
-
-
-ifeq ($(TGTDIR),)
-$(error Undefined target directory (TGTDIR))
 endif
 
 ifeq ($(OSTYPE), Win32)
@@ -21,14 +22,15 @@ EXE_EXTENSION	:=
 CP		:= cp
 endif
 
+ifeq ($(TGTDIR),)
+$(error Undefined target directory (TGTDIR))
+endif
+
 SRCDIR		:= .
 TGTDIR		:= 
 
-# Ocaml object files. Must be ordered by dependencies.
-ML_OBJS = $(addprefix $(TGTDIR)/,					    \
-		defaults.cmo globals.cmo memmodel.cmo ast.cmo symtab.cmo    \
-		predef.cmo type.cmo actions.cmo lower.cmo vp.cmo \
-		lexer.cmo parser.cmo main.cmo)
+PROGNAME  := emmett
+EXEC      := $(TGTDIR)/$(PROGNAME)$(EXTENSION)
 
 OCAMLC	  = ocamlc
 OCAMLLEX  = ocamllex
@@ -40,7 +42,20 @@ else
 OCAMLLINK = $(OCAMLC) -custom
 endif
 
-$(TGTDIR)/$(PROGNAME)$(EXE_EXTENSION): $(ML_OBJS)
+# Ocaml object files. Must be ordered by dependencies.
+ML_OBJS = $(addprefix $(TGTDIR)/,					    \
+		defaults.cmo globals.cmo memmodel.cmo ast.cmo symtab.cmo    \
+		predef.cmo type.cmo actions.cmo lower.cmo vp.cmo \
+		lexer.cmo parser.cmo main.cmo)
+
+# Main target
+build: setup $(EXEC)
+
+setup:
+	mkdir -p $(TGTDIR)
+
+# Build the executable
+$(EXEC): $(ML_OBJS)
 	$(OCAMLLINK) -o $@ $(ML_OBJS)
 
 # Generate lexer.ml
@@ -59,18 +74,20 @@ $(TGTDIR)/lexer.ml: $(SRCDIR)/lexer.mll
 $(TGTDIR)/parser.ml: $(SRCDIR)/parser.mly
 	$(CP) $< $(TGTDIR)
 	$(OCAMLYACC) $(TGTDIR)/$(<F)
-	$(RM) -f $(TGTDIR)/$(<F)
-	$(RM) -f $(TGTDIR)/$(@F)i
+	$(RM) $(TGTDIR)/$(<F)
+	$(RM) $(TGTDIR)/$(@F)i
 
 # Use defaults for the hosted compiler
 $(TGTDIR)/defaults.ml: $(SRCDIR)/defaults.hosted.ml
-	$(RM) -f $@
+	$(RM) $@
 	$(CP) $< $@
 
+# Copy source files to build directory (they are needed by ocamlc)
 $(TGTDIR)/%.ml: $(SRCDIR)/%.ml
-	$(RM) -f $@
+	$(RM) $@
 	$(CP) $< $@
 
+# Compile ocaml source code
 $(TGTDIR)/%.cmo: $(TGTDIR)/%.ml
 	cd $(TGTDIR) && $(OCAMLC) -c $(<F)
 
@@ -107,10 +124,8 @@ $(TGTDIR)/lexer.cmo: $(addprefix $(TGTDIR)/, \
 $(TGTDIR)/parser.cmo: $(addprefix $(TGTDIR)/, \
 	symtab.cmo globals.cmo ast.cmo actions.cmo)
 
-# The linking target $(SUBDIRS_EXEC) from Subdir.mk doesn't work here.
-# Redefine appropriate build and $(SUBDIRS_EXEC) targets. 
-build: $(PHONY) $(BUILDDIR) SUBDIRS/$(TGTDIR)
-	$(MAKE) -f $(THISMAKEFILE) -C SUBDIRS $(SUBDIRS_EXEC)
+clean:
+	$(RM) -r $(TGTDIR)
 
-SUBDIRS/$(TGTDIR):
-	$(MKDIR) -p SUBDIRS/$(TGTDIR)
+# Declare phony targets
+.PHONY: build setup clean
