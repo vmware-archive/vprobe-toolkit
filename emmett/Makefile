@@ -2,19 +2,11 @@
 #
 # Usage: make -f Makefile <options>
 # where the options are:
-#  OSTYPE=<os>    the host os type: win, linux, or mac (required)
+#  OSTYPE=<os>    set to w32 on windows hosts
 #  TGTDIR=<dir>   the target directory (required)
 #
 
-ifneq ($(OSTYPE), win)
-ifneq ($(OSTYPE), linux)
-ifneq ($(OSTYPE), mac)
-$(error Invalid host OS type (must be win, linux, or mac))
-endif
-endif
-endif
-
-ifeq ($(OSTYPE), Win32)
+ifeq ($(OSTYPE), w32)
 EXE_EXTENSION	:= .exe
 CP		:= copy
 else
@@ -36,7 +28,7 @@ OCAMLC	  = ocamlc
 OCAMLLEX  = ocamllex
 OCAMLYACC = ocamlyacc
 
-ifeq ($(OSTYPE), Win32)
+ifeq ($(OSTYPE), w32)
 OCAMLLINK = $(SRCDIR)/ocamllink.bat
 else
 OCAMLLINK = $(OCAMLC) -custom

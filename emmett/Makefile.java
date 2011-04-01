@@ -2,26 +2,18 @@
 #
 # Usage: make -f Makefile.java <options>
 # where the options are:
-#  OSTYPE=<os>     the host os type: win, linux, or mac (required)
+#  OSTYPE=<os>     set to w32 on windows hosts
 #  TGTDIR=<dir>    the target directory (required)
 #  OCAMLJAVA=<dir> path to the ocaml jar files (from cadmium distribution)
 #
 # See http://ocamljava.x9c.fr/ for more details regarding OCaml-Java.
 #
 
-ifneq ($(OSTYPE), win)
-ifneq ($(OSTYPE), linux)
-ifneq ($(OSTYPE), mac)
-$(error Invalid host OS type (must be win, linux, or mac))
-endif
-endif
-endif
-
 ifeq ($(TGTDIR),)
 $(error Undefined target directory (TGTDIR))
 endif
 
-ifeq ($(OSTYPE), win)
+ifeq ($(OSTYPE), w32)
 CP		:= copy
 else
 CP		:= cp
