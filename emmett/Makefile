@@ -3,7 +3,6 @@
 # Usage: make -f Makefile <options>
 # where the options are:
 #  OSTYPE=<os>    set to w32 on windows hosts
-#  TGTDIR=<dir>   the target directory (required)
 #
 
 ifeq ($(OSTYPE), w32)
@@ -14,12 +13,8 @@ EXE_EXTENSION	:=
 CP		:= cp
 endif
 
-ifeq ($(TGTDIR),)
-$(error Undefined target directory (TGTDIR))
-endif
-
 SRCDIR		:= .
-TGTDIR		:= 
+TGTDIR		:= build
 
 PROGNAME  := emmett
 EXEC      := $(TGTDIR)/$(PROGNAME)$(EXTENSION)
