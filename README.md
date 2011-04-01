@@ -49,21 +49,30 @@ debian-based systems run
 
     sudo apt-get install ghc
 
-For ws7.x you will need a recent version of the OCaml compiler.  On
-debian-based systems run
+For ws7.x you will need to have java installed on your system.  If you
+don't have java, or you wish to compile the "native" Emmett compiler you
+will need a recent version of the Ocaml compiler.  On debian-based
+systems run
 
     sudo apt-get install ocaml-nox
 
-We also provide a mechanism to compile the Emmett compiler into Java
+We also provide mechanism to re-compile the Emmett compiler into Java
 byte codes.  The generated executable is a .jar file which you can run
 with any platform that has a recent version of the Java Runtime (JRE).
 
 
 Getting Started
 ---------------
-Run the install.sh script to compile the Emmett compiler and follow
-the instructions on the screen.  You can then try running some of the
-samples in the cookbook directory.
+If you have java, simply add the bin directory to your path, e.g.
+
+    export PATH=\$PATH:$dir/bin # (sh, bash, zsh)
+ or
+    setenv PATH \$PATH:$dir/bin # (csh, tcsh)
+
+If you don't have java then first run the install.sh script to compile
+the Emmett compiler and then follow the instructions on the screen.  
+
+You are now ready to trye some of the samples in the cookbook directory.
 
 Running VProbes
 ---------------
