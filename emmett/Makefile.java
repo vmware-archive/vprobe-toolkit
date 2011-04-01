@@ -3,14 +3,13 @@
 # Usage: make -f Makefile.java <options>
 # where the options are:
 #  OSTYPE=<os>     set to w32 on windows hosts
-#  TGTDIR=<dir>    the target directory (required)
 #  OCAMLJAVA=<dir> path to the ocaml jar files (from cadmium distribution)
 #
 # See http://ocamljava.x9c.fr/ for more details regarding OCaml-Java.
 #
 
-ifeq ($(TGTDIR),)
-$(error Undefined target directory (TGTDIR))
+ifeq ($(OCAMLJAVA),)
+$(error Please set OCAMLJAVA to the path to the Ocaml to java compiler)
 endif
 
 ifeq ($(OSTYPE), w32)
@@ -20,7 +19,7 @@ CP		:= cp
 endif
 
 SRCDIR		:= .
-TGTDIR		:= 
+TGTDIR		:= build
 
 PROGNAME  := emmett
 EXTENSION := .jar
@@ -29,9 +28,8 @@ EXEC      := $(TGTDIR)/$(PROGNAME)$(EXTENSION)
 OCAMLLEX   := ocamllex
 OCAMLYACC  := ocamlyacc
 
-OCAMLJBIN  := $(HOME)/Downloads/ocamljava-bin-1.4/bin
-OCAMLJAVA  := java -Xss500m -Xmx700m -Xms500m -jar $(OCAMLJBIN)/ocamljava.jar
-OCAMLLINK  := java -jar $(OCAMLJBIN)/ocamljava.jar -standalone
+OCAMLJ  := java -Xss500m -Xmx700m -Xms500m -jar $(OCAMLJAVA)/bin/ocamljava.jar
+OCAMLLINK  := java -jar $(OCAMLJAVA)/bin/ocamljava.jar -standalone
 # Ocaml object files. Must be ordered by dependencies.
 ML_OBJS   := $(addprefix $(TGTDIR)/,                                     \
 		defaults.cmj globals.cmj memmodel.cmj ast.cmj symtab.cmj \
@@ -71,7 +69,7 @@ $(TGTDIR)/%.ml: $(SRCDIR)/%.ml
 
 # Compile ocaml source code
 $(TGTDIR)/%.cmj: $(TGTDIR)/%.ml
-	cd $(TGTDIR) && $(OCAMLJAVA) -c  $(<F)
+	cd $(TGTDIR) && $(OCAMLJ) -c  $(<F)
 
 # Object file dependencies
 $(TGTDIR)/ast.cmj: $(addprefix $(TGTDIR)/, \
