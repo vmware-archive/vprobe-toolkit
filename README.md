@@ -10,6 +10,12 @@ virtualization software stack itself.
 You can find more detailed documentation for VProbes in the manuals in
 the doc/ directory.
 
+License
+-------
+
+See License.txt
+
+
 Overview
 --------
 
