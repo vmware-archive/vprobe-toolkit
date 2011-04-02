@@ -1,5 +1,6 @@
-#!/bin/bash
+#!/usr/bin/env python
 
+################################################################################
 # Copyright 2007-2011, VMware, Inc. All rights reserved.
 # 
 # Redistribution and use in source and binary forms, with or without
@@ -23,110 +24,791 @@
 # LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
 # OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH
 # DAMAGE.
+################################################################################
 
-function die {
-   echo $1 1>&2
-   exit 1
-}
 
-COMPILER=emmett
-if [ \( -z "$VMTREE" \) -o \( -z "$VMBLD" \) -o \
-     \( -z "$VMPROD" \) ]; then
-   VMRUN=/usr/bin/vmrun
-   PATH=$PATH:$(dirname $0)
-else
-   echo "Using the devel version from $VMTREE"
-   VMRUN=$VMTREE/build/$VMBLD/$VMPROD/vmrun
-   if ! [ -x $VMRUN ]; then
-      echo "Building vmrun ..."
-      (cd $VMTREE; make vmrun) || die "vmrun build failed"
-   fi
-   PATH=$PATH:$VMTREE/vmcore/support/vprobes/util
-   if ! [ -x $VMRUN ]; then
-      die "I can't find the vmrun binary in $VMRUN."
-   fi
-fi
+import os, sys, re, string, time, tempfile, fcntl, struct, array, select, errno
+from subprocess import *
+from optparse import OptionParser
 
-function usage {
-   echo "usage: $0 [-a|l|q|r] [-c emmettPrg] [vpsourcefile] /path/to/vm"
-   echo "   -a auto-dump and clear hash tables"
-   echo "   -c 'prg': run 'prg' instead of file"
-   echo "   -l just list probes for the given VM"
-   echo "   -q quiet: just load and exit"
-   echo "   -r just reset the given VM and exit"
-   echo "   -s pretty-print stack output"
-   echo "   -h show this message"
-   exit $1
-}
+################################################################################
+# Global flag indicating whether this script runs on ESX.
+################################################################################
+isESX = sys.platform == 'linux2' and os.uname()[0] == 'VMkernel'
 
-function die {
-   echo $1 1>&2
-   exit $2
-}
-compileargs=""
-cmd=""
-quiet=""
-resetvm=""
-stacks=""
-listvm=""
-while getopts "ac:l:qr:sh" curopt; do
-   case $curopt in
-   a) compileargs="-a" ;;
-   c) cmd="$OPTARG" ;;
-   h) usage 0 ;;
-   l) listvm="$OPTARG" ;;
-   q) quiet="true" ;;
-   r) resetvm="$OPTARG" ;;
-   s) stacks="true" ;;
-   --) break ;;
-   ?) usage 1 ;;
-   esac
-done
-shift $((OPTIND - 1))
+################################################################################
+# List of temporary files created during vprobes execution.
+################################################################################
+tempFiles = []
 
-if [ -n "$listvm" ]; then
-   exec $VMRUN vprobeListProbes $listvm
-fi
+################################################################################
+# List of targets for multi-domain ESX scripts.
+################################################################################
+targets = {}
 
-if [ -n "$resetvm" ]; then
-   exec $VMRUN vprobeReset $resetvm > /dev/null 2>&1
-fi
+################################################################################
+# Vprobes char device name.
+################################################################################
+VPROBEDEV_NAME = "/vmfs/devices/char/vmkdriver/vprobe"
 
-if [ $# -lt 1 ]; then
-   usage 1
-fi
-# Collect all the source files. The last remaining argument had better be
-# a VM.
-while [ $# -gt 1 ]; do
-   files="$files $1"
-   shift 1
-done
+################################################################################
+# Maximum size of a VProbes error string (in bytes)
+################################################################################
+VPROBE_STRING_BUFSZ = 256  # From vprobePublicTypes.h
 
-if [ $# -lt 1 ]; then
-   usage
-   exit 1
-fi
+################################################################################
+# VProbe ioctl load command values from vprobe_vmk_uw.h
+################################################################################
+VPROBEVMK_IOCTL_LOADVP        = 0x10
+VPROBEVMK_IOCTL_UNLOAD_SCRIPT = VPROBEVMK_IOCTL_LOADVP + 1
 
-VM=$1
-VMDIR=$(dirname $VM)
+################################################################################
+# Number and size of init script config options
+################################################################################
+VPROBES_STR_CONFIG_SIZE = 512
+initConfigs = [
+    "/VProbes/InitScript1",
+    "/VProbes/InitScript2",
+    "/VProbes/InitScript3",
+    "/VProbes/InitScript4",
+]
 
-# If there's a preload in the vm directory, load it as well.
-if [ -f "$VMDIR/preload.emt" ]; then
-   files="$VMDIR/preload.emt $files"
-fi
-out=$($COMPILER -c "$cmd" $compileargs $files) || die "compile error" 2
-VMRUNOUT=$($VMRUN vprobeLoad $VM "$out" 2>&1)|| die "vmrun error:$VMRUNOUT" 3
+################################################################################
+# Environment variables
+################################################################################
+vmtree = None
+vmbld = None
+vmprod = None
+haveVars = False
 
-if [ -z "$quiet" ]; then
-   trap '$VMRUN vprobeReset $VM > /dev/null 2>&1; exit $stat' 2 15 9 0 1
-   if [ -n "$compileargs" ]; then
-      TAIL=vptail.pl
-   else
-      TAIL="tail -f"
-   fi
-   if [ -n "$stacks" ]; then
-      $TAIL $VMDIR/vprobe.out | vprobe-stack-filt $VM
-   else
-      $TAIL $VMDIR/vprobe.out
-   fi
-fi
+################################################################################
+# tempFile --
+#      Creates a temporary file and writes the given script to that file.
+################################################################################
+def tempFile(script, prefix, suffix):
+    (file, name) = tempfile.mkstemp(prefix=prefix, suffix=suffix, text=True)
+    os.write(file, script)
+    os.close(file)
+    tempFiles.append(name)
+    return name
+
+
+################################################################################
+# GetCommandLineOptions --
+#      Process command line arguments.
+################################################################################
+def GetCommandLineOptions(argv):
+    parser = OptionParser(usage = 'Usage: %prog [options] [vmx] <script files>')
+    parser.add_option('-a', '--aggr', dest='doAggr',
+                      action="store_true", default=False,
+                      help='periodically log and clear aggregates')
+    
+    parser.add_option('-c', '', dest='inlineScript', action='store',
+                      default='', type='string', metavar='CODE',
+                      help='load the emmett code provided on the command line')
+    
+    parser.add_option('-d', '', metavar='TIME', dest='duration',
+                      type="float", nargs=1,
+                      default=10 * 365 * 24 * 60 * 60, # 10 years
+                      help='run for a specified number of seconds')
+
+    parser.add_option('-i', '--input', dest='stdinScript',
+                      action='store_true', default=False,
+                      help='load the vp code provided on standard input')
+
+    parser.add_option('', '--emmett', dest='emmettPath', action='store',
+                      default='', type='string', metavar='PATH',
+                      help='path to emmett compiler binary')
+    if isESX:
+        parser.add_option('-o', '--output', dest='readOutput',
+                          action='store_true', default=False,
+                          help='print vprobes output to standard output')
+        
+        parser.add_option('-f', '', dest='outfile', action='store',
+                          default='', type='string', metavar='FILE',
+                          help='print vprobes output to a file')
+        
+        parser.add_option('-t', dest='traceFuncs', action='append',
+                          default=[], type='string',
+                          metavar='[MOD.]FUN[:NARGS]',
+                          help=
+                          'trace the execution of a VMkernel function FUN. ' +
+                          'A module name prefix MOD may be provided. If ' +
+                          'specified, the first NARGS parameters are printed.'
+                          )
+        
+        parser.add_option('-m', '--vm', dest='vmTargets', action='append',
+                          default=[], type='string', metavar='VM',
+                          help=
+                          'target VM id or vmx datastore path. Can be ' +
+                          'specified multiple times. You can ' +
+                          'prefix the id or vmx path with a VM specifier. ' +
+                          'For example VM1:1 or VM2:/ubuntu.vmx will map ' +
+                          'probes prefixed with VM1 or VM2 in the script ' +
+                          'to the specified VM.'
+                          )
+
+        parser.add_option('-k', '--vmk', dest='vmkTarget',
+                          action='store_true', default=False,
+                          help=
+                          'run against the vmkernel. Can be passed along ' +
+                          'with the -m option when running multidomain ' +
+                          'scripts.'
+                          )
+
+        parser.add_option('', '--destructive', dest='destructiveMode',
+                          action='store_true', default=False,
+                          help='enable the use of destructive builtins')
+
+
+        parser.add_option('-b', '--boot', dest='bootScript',
+                          action='store_true', default=False,
+                          help='load script at next host reboot')
+
+
+    parser.add_option('-l', '--load', dest='doLog',
+                      action="store_false", default=True,
+                      help='skip logging to stdout')
+
+    parser.add_option('-s', '', dest='guestSymFile', action='store',
+                      default='', type='string', metavar='FILE',
+                      help='use the given guest symbol file')
+
+    parser.add_option('-r', '--reset', dest='doReset',
+                      action="store_true", default=False,
+                      help='reset the current probes')
+
+    if not isESX:
+        parser.add_option('-p', '--listProbes', dest='listProbes',
+                          action="store_true", default=False,
+                          help='list probes for the given VM')
+
+        parser.add_option('-g', '--listGlobals', dest='listGlobals',
+                          action="store_true", default=False,
+                          help='list globals for the given VM')
+    
+        parser.add_option('-v', '--verbose', dest='verbose',
+                          action="store_true", default=False,
+                          help='verbose vmrun error messages')
+
+        parser.add_option('', '--vmrun', dest='vmrunPath', action='store',
+                          default='', type='string', metavar='PATH',
+                          help='path to vmrun binary')
+
+    (options, args) = parser.parse_args(args=argv[1:])
+    return CheckArgs(options, args)
+
+################################################################################
+# CheckArgs --
+#      Checks validity conditions for command-line arguments. Returns
+#      a tuple of the set of options, the list of scripts, and the vmx
+#      file.
+################################################################################
+def CheckArgs(options, args):
+    vmx = None
+    scripts = []
+    inputType = None
+
+    if options.inlineScript and options.stdinScript:
+        raise Exception("mixing inline and stdin scripts is not allowed")
+    
+    if options.inlineScript:
+        # The code passed via -c must be Emmett
+        inputType = '.emt'
+
+    if options.stdinScript:
+        # The code passed via -i must be VP
+        inputType = '.vp'
+        stdinFile = tempFile(sys.stdin.read(),
+                             prefix = 'vprobe-stdin-',
+                             suffix = '.vp')
+        scripts.append(stdinFile)
+
+    for fileName in args:
+        if not os.path.isfile(fileName):
+            raise Exception("file does not exist: " + fileName)
+        
+        extension = os.path.splitext(fileName)[1]
+        if extension == '.vmx' or extension == '.cfg':
+            if vmx is not None:
+                raise Exception("more than one vmx file provided")
+            vmx = fileName
+        elif extension == '.vp' or extension == '.emt':
+            if inputType != None and inputType != extension:
+                raise Exception("mixing VP and Emmett scripts is not allowed")
+            inputType = extension
+            scripts.append(fileName)
+        else:
+            raise Exception("script files must be .vp or .emt files")
+
+    if not isESX and not vmx:
+        raise Exception("missing path to vmx file")
+
+    if isESX:
+        if (options.vmkTarget or
+            not options.vmTargets or
+            len(options.vmTargets) >= 2):
+            targets[('VMK', '')] = ''
+
+        if options.vmTargets:
+            if options.bootScript:
+                raise Exception("Boot script cannot be loaded against VMs")
+
+            for tgt in options.vmTargets:
+                m = re.search("^(VM\d*):(.*)", tgt)
+                if m:
+                    (vmDom, vmName) = m.group(1,2)
+                else:
+                    (vmDom, vmName) = ('VM', tgt)
+                if vmName is '':
+                    raise Exception("Empty VM name")
+                for (dom, name) in targets:
+                    if name == vmName:
+                        raise Exception("Duplicate VM target: " + vmName)
+                targets[(vmDom, vmName)] = ''
+
+    return (options, scripts, vmx, targets)
+
+################################################################################
+# GetEnvironmentVars --
+#      Retrieves the VMTREE, VMBLD, VMPROD environment variables.
+#      Returns true if all variables are set.
+################################################################################
+def GetEnvironmentVars():
+    global vmtree, vmbld, vmprod
+
+    vmtree = os.getenv('VMTREE')
+    vmbld = os.getenv('VMBLD')
+    vmprod = os.getenv('VMPROD')
+    return vmtree is not None and vmbld is not None and vmprod is not None
+
+################################################################################
+# Which --
+#      Find an executable command in the PATH.
+################################################################################
+def Which(f):
+    PATH = os.getenv('PATH')
+    paths = string.split(PATH, os.pathsep)
+    for path in paths:
+        if os.path.exists(os.path.join(path, f)):
+            return os.path.abspath((os.path.join(path, f)))
+
+    return None
+
+################################################################################
+# GetEmmett --
+#      Search emmett in /sbin (for ESX), the bora location or PATH (for
+#      hosted). Returns emmett's full path, or None otherwise. 
+################################################################################
+def GetEmmett(options):
+    if options.emmettPath:
+        emmett = options.emmettPath
+    elif isESX:
+        emmett =  '/sbin/emmett'
+    elif haveVars:
+        emmett = os.path.join(vmtree, 'build', vmbld, vmprod,
+                              'emmett', 'emmett')
+    else:
+        emmett = Which('emmett')
+
+    if emmett is None:
+        raise Exception("emmett compiler not found")
+
+    if not os.path.isfile(emmett):
+        raise Exception("emmett compiler not found: %s" % emmett)
+
+    return emmett
+
+################################################################################
+# FetchKernelTypes --
+#      Dump vmkernel's vprobeTypes logchannel into a temporary file, and
+#      return the file path.
+################################################################################
+def FetchKernelTypes():
+    f = tempFile('', prefix = 'vprobe-types-', suffix = '.emt')
+    os.system("logchannellogger -p vprobeTypes " + f)
+    return f
+
+################################################################################
+# GetInstalledVmrun --
+#      Look for vmrun in a standard install. Return None if not found.
+################################################################################
+def GetInstalledVmrun():
+    if sys.platform == 'darwin':
+        return '/Library/Application Support/VMware Fusion/vmrun'
+    elif sys.platform[0:3] == 'win' or sys.platform == 'cygwin':
+        for varName in ['ProgramFiles', 'ProgramFiles(x86)', 'PROGRAMFILES']:
+            programFiles = os.getenv(varName)
+            if programFiles:
+                return os.path.join(programFiles, 'VMware',
+                                    'VMware Workstation', 'vmrun.exe')
+        return None
+    elif os.uname()[0] == 'VMKernel':
+        return None
+    else: #(linux)
+        return '/usr/bin/vmrun'
+    assert(False)
+
+################################################################################
+# GetVmrun --
+#      Look for vmrun in the bora tree or the PATH. Return None if not found.
+################################################################################
+def GetVmrun(options):
+    assert(not isESX)
+    if options.vmrunPath:
+        vmrun = options.vmrunPath
+    elif haveVars:
+        vmrun = os.path.join(vmtree, 'build', vmbld, vmprod, 'vmrun')
+    else:
+        vmrun = GetInstalledVmrun() or Which('vmrun')
+
+    if vmrun is None or not os.path.isfile(vmrun):
+        raise Exception("vmrun command not found")
+
+    return vmrun
+
+################################################################################
+# Exec --
+#      Executes a child command and returns a pair of the error code and 
+#      the stdout printout. By default, the child pipes stdout and prints
+#      stderr, but this can be overriden by callers.
+###############################################################################
+def Exec(args, errmsg, input=None, stdout=PIPE, stderr=None):
+    p = Popen(args, stdin=PIPE, stdout=stdout, stderr=stderr)
+    (out, err) = p.communicate(input)
+    code = p.wait()
+    if code:
+        raise Exception(errmsg)
+    return out
+
+################################################################################
+# ExecVmrun --
+#      Simple wrapper for vmrun commands that controls verbosity.
+###############################################################################
+def ExecVmrun(cmd, options):
+    cmd.insert(0, GetVmrun(options))
+    if options.verbose:
+        Exec(cmd, "vmrun command failed", stdout=None, stderr=None)
+    else:
+        Exec(cmd, "vmrun command failed", stdout=None, stderr=PIPE)
+
+
+################################################################################
+# CloseCharDevice --
+#      Close the character device.
+################################################################################
+def CloseCharDevice(devFd):
+    try:
+        os.close(devFd)
+    except OSError, err:
+        raise Exception("unable to close vprobe char dev")
+
+
+################################################################################
+# ExecLoadESXScriptIntoVMK --
+#      Loads a single-domain script against the VMkernel. This is a
+#      helper function for ExecLoadESXScript below.
+################################################################################
+def ExecLoadESXScriptIntoVMK(script, destructiveMode):
+    try:
+        devFd = os.open(VPROBEDEV_NAME, os.O_WRONLY)
+    except OSError, err:
+        raise Exception("unable to open vprobe char dev")
+
+    try:
+        os.write(devFd, script)
+    except OSError, err:
+        CloseCharDevice(devFd)
+        raise Exception("error writing script to the vprobe char dev")
+
+    # Setup the structure to pass into the ioctl. Pass destructive
+    # mode in the first byte of the structure.
+    layout = 'b%ds' % (VPROBE_STRING_BUFSZ - 1)
+    payload = struct.pack(layout, [0,1][destructiveMode], " ")
+    buf = array.array('c', payload)
+
+    try:
+        fcntl.ioctl(devFd, VPROBEVMK_IOCTL_LOADVP, buf, 1)
+    except IOError, err:
+        CloseCharDevice(devFd)
+        layout = '%ds' % VPROBE_STRING_BUFSZ
+        raise Exception("vp script loading error: " +
+                        struct.unpack(layout, string.join(buf, ""))[0])
+
+    CloseCharDevice(devFd)
+
+################################################################################
+# ExecLoadESXScript --
+#      Loads a single-domain or multi-domain script on ESX. Loading
+#      against a VM is done via hostd; loading against the VMkernel is
+#      done via the vprobe character device.
+################################################################################
+def ExecLoadESXScript(script, destructiveMode):
+    assert(isESX)
+
+    curIndex = None
+
+    # Split Emmett's output
+    for line in script.splitlines():
+
+        m = re.match('@VMK', line)
+        if m:
+            curIndex = ('VMK', '')
+            continue
+
+        m = re.match('@(VM\d*)\s*=\s*(.*)', line)
+        if m:
+            curIndex = m.group(1,2)
+            continue
+
+        if curIndex is None:
+            raise Exception('Script has no target domain')
+
+        targets[curIndex] += line + '\n'
+
+    # Iterate through the extracted pieces and load them into the
+    # appropriate domains. Load into the vmkernel first, then into VMs.
+    # If one of the load fails, cleanup by unloading all targets.
+    try:
+        if ('VMK', '') in targets:
+            script = targets[('VMK', '')]
+            ExecLoadESXScriptIntoVMK(script, destructiveMode)
+
+        for (vmDom, vmName) in targets:
+            script = targets[(vmDom, vmName)]
+            if vmDom != 'VMK':
+                Exec(['/bin/vim-cmd', 'internalsvc/vprobes/load', vmName,
+                      ["0", "1"][destructiveMode]],
+                     "vim-cmd error: script load command", input=script)
+    except Exception:
+        ExecUnloadESXScript()
+
+        # Remove output generated by scripts loaded before the failure
+        # and throw it away to /dev/null.
+        infd = os.open(VPROBEDEV_NAME, os.O_RDONLY)
+        outfd = os.open("/dev/null", os.O_WRONLY)
+        readLoopDrain(infd, outfd)
+        os.close(infd)
+        os.close(outfd)
+        raise
+
+################################################################################
+# ExecLoadBootVPScript --
+#      Fills in the InitScript* config options such that the given
+#      script starts at the next host reboot.
+################################################################################
+def ExecLoadBootVPScript(script):
+    # Eliminate newlines and redundant spaces
+    script = script.replace("\n", " ")
+    script = re.sub(" +", " ", script)
+    script = script.replace(" )", ")")
+
+    # Check if the script fits into the set of InitScript* options
+    optionSize = VPROBES_STR_CONFIG_SIZE - 1
+    if len(script) > len(initConfigs) * optionSize:
+        raise Exception("the script is too large (%d bytes)" % len(script))
+
+    # Fill in each option with chunks from the script
+    for i in range(len(initConfigs)):
+        start = i * optionSize
+        end   = (i + 1) * optionSize
+        # Python's [start:end] means the [start, end) range. It works
+        # as expected when start and end exceed the string range.
+        Exec(["esxcfg-advcfg", "-s", script[start:end], initConfigs[i]],
+             "config option failure");
+
+
+################################################################################
+# ExecUnloadESXScript --
+#      Unload a multi-domain script on ESX. The function doesn't stop at the 
+#      first unload failure, but tries to unload as many targets as it can.
+################################################################################
+def ExecUnloadESXScript():
+    assert(isESX)
+    errorMsg = None
+
+    # Unload the current scripts from VMs
+    for (vmDom, vmName) in targets:
+        if vmDom != 'VMK':
+            try:
+                Exec(['/bin/vim-cmd', 'internalsvc/vprobes/reset', vmName, '0'],
+                     "vim-cmd error: reset command")
+            except Exception, val:
+                errorMsg = "VM " + vmName + ": " + str(val)
+
+    # Unload the current script from the VMkernel
+    if ('VMK', '') in targets:
+        try:
+            devFd = os.open(VPROBEDEV_NAME, os.O_WRONLY)
+        except OSError, err:
+            raise Exception("unable to open vprobe char dev")
+
+        try:
+            fcntl.ioctl(devFd, VPROBEVMK_IOCTL_UNLOAD_SCRIPT)
+        except IOError, err:
+            CloseCharDevice(devFd)
+            raise Exception("vp script unloading error")
+
+        CloseCharDevice(devFd)
+
+    if errorMsg is not None:
+        raise Exception(errorMsg)
+
+
+################################################################################
+# GetTraceScript --
+#      Generates a script that instruments the list of vmkernel functions
+#      given as parameter.
+################################################################################
+def GetTraceScript(traceFuncs):
+    script = "@VMK\n"
+    numArgs = 0
+    template = '(vprobe %s (printf %s))\n'
+    for func in traceFuncs:
+        funcSplit = func.split(':')
+        funcName = funcSplit[0]
+        if len(funcSplit) == 2:
+            try:
+                numArgs = int(funcSplit[1])
+            except ValueError:
+                raise Exception('function argument count is not an integer: '
+                                + funcSplit[1])
+        elif len(funcSplit) > 2:
+            raise Exception('too many colon-separated fields in function ' +
+                            'specification: ' + func)
+
+        # Generate the entry probe
+        entryArgs   = ''
+        entryFormat = '\"Enter: ' + funcName 
+        if numArgs > 0:
+            entryFormat += ' args ='
+            for i in range(numArgs):
+                entryFormat += ' %#x'
+                entryArgs   += ' ARG%d' % i
+        entryFormat += '\\n\"'
+        script += template % ('VMK:ENTER:' + funcName,
+                              entryFormat + ' ' + entryArgs)
+
+        # Generate the return probe
+        script += template % ('VMK:EXIT:' + funcName,
+                              '\"Exit:  ' + funcName + 
+                              ' retval = %#x\\n\" ARG0')
+    return script
+
+
+################################################################################
+# GetDomainList --
+#      Creates a list of domain specifications and places it in a
+#      temporary file.
+################################################################################
+def GetDomainList():
+    if ('VMK', '') in targets:
+        domains = '@VMK\n'
+    else:
+        domains = ''
+    for (vmDom, vmName) in targets:
+        if vmDom != 'VMK':
+            domains += '@' + vmDom + ' = ' + vmName + '\n'
+
+    return tempFile(domains, prefix = 'vprobe-domains-', suffix = '.emt')    
+
+################################################################################
+# GetVPScript --
+#      Combines inline code, VP scripts, and Emmett scripts. Runs the
+#      Emmett compiler if the inputs are Emmett scripts. Returns a
+#      single VP script to be loaded into the target domain.
+################################################################################
+def GetVPScript(options, files, vmkTypes):
+    script = ''
+    if files and os.path.splitext(files[0])[1] == '.vp':
+        # VP sources
+        for file in files:
+            f = open(file, "rt")
+            script += f.read()
+            f.close()
+    elif files or options.inlineScript:
+        # Emmett sources
+        compiler = [GetEmmett(options), '-i', '1000']
+        if isESX:
+            compiler += [GetDomainList()]
+        if options.doAggr:
+            compiler += ['-a']
+        if options.guestSymFile:
+            compiler += ['-s', options.guestSymFile]            
+        if vmkTypes:
+            compiler += [FetchKernelTypes()] 
+        if options.inlineScript:
+            compiler += ['-c', options.inlineScript]
+        compiler += files
+        script = Exec(compiler, "script compilation error")
+    elif isESX and options.traceFuncs:
+        script = GetTraceScript(options.traceFuncs)
+    else:
+        raise Exception("no vprobes script to load")
+
+    return script
+
+################################################################################
+# readLoop --
+# readLoopDrain --
+#      Poll loops that read data from infd and write it out to outfd.
+#      readLoop runs while the script is loaded. readLoopDrain runs after
+#      unloading the script to collect any remaining data.
+################################################################################
+def readLoop(infd, outfd, args, options):
+    timeout = 1
+    tend = time.time() + options.duration
+    while tend > time.time():
+        try:
+            if select.select([infd], [], [], timeout)[0] == [infd]:
+                str = os.read(infd, 512)
+                os.write(outfd, str)
+        except select.error, err:
+            # Handle exceptions caused by e.g. SIGWINCH
+            if err[0] != errno.EINTR: raise
+    return
+
+def readLoopDrain(infd, outfd):
+    while True:
+        try:
+            while select.select([infd], [], [], 0.2)[0] == [infd]:
+                str = os.read(infd, 512)
+                if str == '':
+                    return
+                os.write(outfd, str)
+            return
+        except select.error, err:
+            # Handle exceptions caused by e.g. SIGWINCH
+            if err[0] != errno.EINTR: raise
+
+################################################################################
+# showVProbesOutput --
+#      Prints out vprobes output after loading a script. Ctrl-C unloads
+#      the script and stops the output.
+################################################################################
+def showVProbesOutput(args, options, vprobeOut=None):
+    if isESX:
+        readOutput = options.readOutput
+        outfile    = options.outfile
+    else:
+        readOutput = None
+        outfile    = None
+
+    if not options.doLog and not readOutput:
+        return
+    
+    if outfile:
+        outfd = os.open(outfile, os.O_WRONLY | os.O_CREAT | os.O_TRUNC)
+    else:
+        outfd = sys.stdout.fileno()
+
+    if isESX:
+        infd = os.open(VPROBEDEV_NAME, os.O_RDONLY)
+    else:
+        infd = os.open(vprobeOut, os.O_RDONLY)
+
+    # Copy data from infd to outfd. User hits Ctrl-C to terminate.
+    try:
+        readLoop(infd, outfd, args, options)
+    except KeyboardInterrupt:
+        # Fall back on the finally clause below
+        pass 
+    finally:
+        if not readOutput:
+            # Unload the script by appending the '-r' option to the
+            # list of arguments, then calling the main routine. That
+            # will invoke the appropriate script unloading code for
+            # ESX (ExecUnloadESXScript) or hosted (vmrun vprobeReset).
+            mainWork(args + ['-r'])
+
+            # Print the remaining output.
+            readLoopDrain(infd, outfd)
+
+        # Cleanup.
+        os.close(infd)
+        if outfile:
+            os.close(outfd)
+
+################################################################################
+# mainWork --
+#      Helper function that does the work of the main program.
+#      Raises an exception if an error occurs.
+################################################################################
+def mainWork(argv):
+    global haveVars, targets
+    if sys.version_info[1] < 4:
+        raise Exception("Python version must be 2.4 or greater.")
+
+    # Parse command line options
+    (options, files, vmx, targets) = GetCommandLineOptions(argv)
+
+    if isESX:
+        Exec(['esxcfg-advcfg', '-s', '1', '/VProbes/Enable'],
+              'vprobe enable failure')
+
+        if options.doReset:
+            ExecUnloadESXScript()
+        elif options.readOutput:
+            showVProbesOutput([], options)
+        else:
+            targetIsVMK = ('VMK', '') in targets
+            script = GetVPScript(options, files, targetIsVMK)
+            if options.bootScript:
+                ExecLoadBootVPScript(script)
+            else:
+                ExecLoadESXScript(script, options.destructiveMode)
+                showVProbesOutput([argv[0]], options)
+
+    if not isESX:
+        assert(vmx)
+        haveVars = GetEnvironmentVars()
+        if options.listProbes:
+            ExecVmrun(['vprobeListProbes', vmx], options)
+        elif options.listGlobals:
+            ExecVmrun(['vprobeListGlobals', vmx], options)
+        elif options.doReset:
+            ExecVmrun(['vprobeReset', vmx], options)
+        else:
+            vprobeOut = os.path.join(os.path.dirname(vmx), 'vprobe.out')
+            if os.path.exists(vprobeOut):
+                os.remove(vprobeOut)
+	    
+            script = GetVPScript(options, files, False)
+            fileName = tempFile(script, prefix = 'vprobe-', suffix = '.vp')
+            ExecVmrun(['vprobeLoadFile', vmx, fileName], options)
+            showVProbesOutput([argv[0], vmx], options, vprobeOut)
+
+
+################################################################################
+# main --
+#      Main program that translates exceptions into error codes.
+#      Called from vptest, which doesn't understand exceptions and
+#      requires an error code interface.
+################################################################################
+def main(argv):
+    msg=""
+    try:
+        try:
+            mainWork(argv)
+        except AssertionError:
+            raise
+        except Exception, val:
+            if sys.exc_type != SystemExit:
+                msg = "vprobe: " + str(val) + "\n"
+            return (1, msg)
+    finally:
+        for tempFile in tempFiles:
+            os.remove(tempFile)
+
+    return (0, msg)
+
+################################################################################
+# Main program when running this script directly.
+################################################################################
+if __name__ == '__main__':
+    (code, msg) = main(sys.argv)
+    if msg:
+        sys.stderr.write(msg)
+    if code == 0:
+        print("OK.");
+    sys.exit(code)
