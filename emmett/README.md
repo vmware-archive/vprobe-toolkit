@@ -41,9 +41,6 @@ roughly follow C's precedence and syntax.
 Bugs/Limitations
 ----------------
 
-VProbes' type map is currently hard-coded in Main.lhs. This should be
-externally specifiable.
-
 Currently all variables are global, and can be implicitly declared by
 being assigned a given type. The only exception is function arguments,
 which have function scope. It would be nice to provide block-local
