@@ -1,4 +1,7 @@
-# Copyright 2008-2011, VMware, Inc. All rights reserved.
+/************************************************************
+ * Copyright 2007-2011 VMware, Inc.  All rights reserved.
+ * -- VMware Confidential
+ ************************************************************/
 
 /*
  * A simple benchmark that measures the CPU cost of some salient vprobe
@@ -11,6 +14,11 @@
  * than the "avg" figure, and the "max" figure often represents an extreme
  * outlier.
  */
+
+int start;
+bag b[32];
+aggr ag[0][1];
+aggr nulla[0][0];
 
 void
 measure_tsc()
@@ -123,7 +131,7 @@ measure_printf()
    ag["printf"] <- (TSC - start) >> 2;
 }
 
-VMM:TIMER:1001usec
+USEC:1001
 {
    clearaggr(keya);
    clearaggr(nulla);
