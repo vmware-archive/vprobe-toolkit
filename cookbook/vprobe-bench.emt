@@ -1,34 +1,47 @@
 # Copyright 2008-2011, VMware, Inc. All rights reserved.
 
-## A simple benchmark that measures the CPU cost of some salient vprobe
-## operations. We pretty much rely on the Emmett compiler being unsophisticated
-## here.
-
-# We gather a start TSC, perform N operations, then gather a completion
-# TSC and divide the difference by N. Because of host interrupts, etc.,
-# the "min" figure in the aggregates is often more repeatable and informative
-# than the "avg" figure, and the "max" figure often represents an extreme
-# outlier.
+/*
+ * A simple benchmark that measures the CPU cost of some salient vprobe
+ * operations. We pretty much rely on the Emmett compiler being unsophisticated
+ * here.
+ *
+ * We gather a start TSC, perform N operations, then gather a completion
+ * TSC and divide the difference by N. Because of host interrupts, etc.,
+ * the "min" figure in the aggregates is often more repeatable and informative
+ * than the "avg" figure, and the "max" figure often represents an extreme
+ * outlier.
+ */
 
 void
 measure_tsc()
 {
    start = TSC;
-   a = TSC;
-   a = TSC;
-   a = TSC;
-   a = TSC;
+   TSC;
+   TSC;
+   TSC;
+   TSC;
    ag["tsc"] <- (TSC - start) >> 2;
+}
+
+void
+measure_global()
+{
+   start = TSC;
+   start;
+   start;
+   start;
+   start;
+   ag["global"] <- (TSC - start) >> 2;
 }
 
 void
 measure_phys()
 {
    start = TSC;
-   a = getguestphys(0 << 12);
-   a = getguestphys(1 << 12);
-   a = getguestphys(2 << 12);
-   a = getguestphys(3 << 12);
+   getguestphys(0 << 12);
+   getguestphys(1 << 12);
+   getguestphys(2 << 12);
+   getguestphys(3 << 12);
    ag["physmem"] <- (TSC - start) >> 2;
 }
 
@@ -36,25 +49,98 @@ void
 measure_linear()
 {
    start = TSC;
-   a = getguest(RIP);
-   a = getguest(RIP);
-   a = getguest(RIP);
-   a = getguest(RIP);
-   ag["curprocname"] <- (TSC - start) >> 2;
+   getguest(RIP);
+   getguest(RIP);
+   getguest(RIP);
+   getguest(RIP);
+   ag["readlinear"] <- (TSC - start) >> 2;
 }
 
 void
-measure_aggr()
+measure_keyed_aggr_miss()
 {
    start = TSC;
-   nulla++; nulla++; nulla++; nulla++;
-   ag["null AGGR"] <- (TSC - start) >> 2;
+   keya["marfo", 7]++;
+   keya["snarf", 11]++;
+   keya["snarf", 12]++;
+   keya["snarf", 13]++;
+   ag["keyaggr miss"] <- (TSC - start) >> 2;
 }
 
-USEC:5555  measure_tsc();
-USEC:888   measure_linear();
-USEC:999   measure_phys();
-USEC:777   measure_aggr();
+void
+measure_keyed_aggr_hit()
+{
+   start = TSC;
+   keya["marfo", 7]++;
+   keya["marfo", 7]++;
+   keya["marfo", 7]++;
+   keya["marfo", 7]++;
+   ag["keyaggr hit"] <- (TSC - start) >> 2;
+}
+
+void
+measure_null_aggr()
+{
+   start = TSC;
+   nulla++;
+   nulla++;
+   nulla++;
+   nulla++;
+   ag["keyless aggr"] <- (TSC - start) >> 2;
+}
+
+void
+measure_bag_insert()
+{
+   start = TSC;
+   b[0] <- 1;
+   b[1] <- 2;
+   b[2] <- 2;
+   b[3] <- 3;
+   ag["baginsert"] <- (TSC - start) >> 2;
+}
+
+void
+measure_bag_remove()
+{
+   start = TSC;
+   /* 
+    * NB: depends on keys matching those in measure_bag_insert, and on
+    * running after measure_bag_insert.
+    */
+   b[3];
+   b[2];
+   b[0];
+   b[1];
+   ag["bagremove"] <- (TSC - start) >> 2;
+}
+
+void
+measure_printf()
+{
+   start = TSC;
+   printf(""); printf(""); printf(""); printf("");
+   ag["printf"] <- (TSC - start) >> 2;
+}
+
+VMM:TIMER:1001usec
+{
+   clearaggr(keya);
+   clearaggr(nulla);
+
+   measure_tsc();
+   measure_global();
+   measure_linear();
+   measure_phys();
+   measure_null_aggr();
+   measure_keyed_aggr_hit();
+   measure_keyed_aggr_miss();
+   measure_bag_insert();
+   measure_bag_remove();
+   measure_printf();
+}
+
 VMM1Hz {
-       logaggr(ag);
+   printf("\n");
+   logaggr(ag);
 }

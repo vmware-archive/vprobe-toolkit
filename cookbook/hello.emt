@@ -1,4 +1,4 @@
 
 VMM10Hz {
-   logstr("Hi\n");
+   printf("Hi\n");
 }

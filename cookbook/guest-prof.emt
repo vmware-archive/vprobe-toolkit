@@ -1,3 +1,5 @@
 
-# 1001Hz
+aggr ticks[1];
+
+/* 1001Hz */
 USEC:999 ticks[RIP]++;
