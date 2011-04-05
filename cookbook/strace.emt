@@ -1,6 +1,19 @@
+/*
+ * This VProbe script only works with Linux guests.
+ *
+ * To use this script you must first copy /proc/kallsyms from the guest 
+ * to the host (which cannot be done using vmrun).  Once you have a local
+ * copy run the following:
+ *
+ * vprobe -s local.kallsyms <path to vmx> strace.emt
+ *
+ */
+
 string str;
 
 GUEST:system_call {
-   syscname(str, RAX);
-   printf("%s : %s\n", curprocname(), str);
+    //syscname(str, RAX);
+   printf("%s : %d\n", curprocname(), RAX);
 }
+
+VMMLoad { printf("Starting strace\n"); }
