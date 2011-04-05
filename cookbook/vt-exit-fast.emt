@@ -1,5 +1,5 @@
 /************************************************************
- * Copyright 2007-2011 VMware, Inc.  All rights reserved.
+ * Copyright 2007-2009 VMware, Inc.  All rights reserved.
  * -- VMware Confidential
  ************************************************************/
 
@@ -12,24 +12,22 @@
  */
 
 HV_Exit {
-   code = getvmcs(VT_EXIT_REASON);
+   code = VMCS_EXIT_REASON;
    if (code == 0) {        /* Exception */
-      key1 = getvmcs(VT_EXIT_INT_INFO) & 0xff;
-      key2 = key1 == 14 ? getvmcs(VT_EXIT_QUAL) : 0;
+      key1 = VMCS_EXIT_INTR_INFO & 0xff;
+      key2 = key1 == 14 ? VMCS_EXIT_QUAL : 0;
    } else if (code == 1) { /* Interrupt */
-      key1 = getvmcs(VT_EXIT_INT_INFO) & 0xff;
+      key1 = VMCS_EXIT_INTR_INFO & 0xff;
       key2 = 0;
    } else if (code == 14) { /* INVLPG */
-      key1 = getvmcs(VT_EXIT_QUAL);
+      key1 = VMCS_EXIT_QUAL;
       key2 = 0;
    } else if (code == 28) { /* CR */
-      qual = getvmcs(VT_EXIT_QUAL);
-      key1 = qual & 0xf;
-      key2 = (qual >> 4) & 1;
+      key1 = VMCS_EXIT_QUAL & 0xf;
+      key2 = (VMCS_EXIT_QUAL >> 4) & 1;
    } else if (code == 30) { /* IN/OUT */
-      qual = getvmcs(VT_EXIT_QUAL);
-      key1 = (qual >> 16) & 0xfff;
-      key2 = (qual >> 3) & 1;
+      key1 = (VMCS_EXIT_QUAL >> 16) & 0xfff;
+      key2 = (VMCS_EXIT_QUAL >> 3) & 1;
    } else {
       key1 = 0;
       key2 = 0;
