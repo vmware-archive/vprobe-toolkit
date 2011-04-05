@@ -187,10 +187,6 @@ def GetCommandLineOptions(argv):
                           action="store_true", default=False,
                           help='list globals for the given VM')
     
-        parser.add_option('-v', '--verbose', dest='verbose',
-                          action="store_true", default=False,
-                          help='verbose vmrun error messages')
-
         parser.add_option('', '--vmrun', dest='vmrunPath', action='store',
                           default='', type='string', metavar='PATH',
                           help='path to vmrun binary')
@@ -309,7 +305,10 @@ def GetEmmett(options):
         emmett = os.path.join(vmtree, 'build', vmbld, vmprod,
                               'emmett', 'emmett')
     else:
-        emmett = Which('emmett')
+        bindir = os.path.abspath(os.path.dirname(__file__))
+        emmett = os.path.join(bindir, 'emmett')
+        if not os.path.isfile(emmett):
+            emmett = Which('emmett')
 
     if emmett is None:
         raise Exception("emmett compiler not found")
@@ -387,10 +386,10 @@ def Exec(args, errmsg, input=None, stdout=PIPE, stderr=None):
 ###############################################################################
 def ExecVmrun(cmd, options):
     cmd.insert(0, GetVmrun(options))
-    if options.verbose:
+    try:
         Exec(cmd, "vmrun command failed", stdout=None, stderr=None)
-    else:
-        Exec(cmd, "vmrun command failed", stdout=None, stderr=PIPE)
+    except Exception, val:
+        sys.exit(1)
 
 
 ################################################################################
