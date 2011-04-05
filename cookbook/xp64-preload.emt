@@ -1,0 +1,68 @@
+/*
+ * This file must be compiled with the appropriate symbol file containing
+ * entries for nt!PsGetCurrentProcess, nt!PsGetCurrentProcessId, and 
+ * nt!PsGetProcessImageFileName.
+ */
+
+memmodel guest64;
+
+/*
+ * guestload --
+ * guestloadstr --
+ *   Wrappers around getguest* that return 0 for reads of the null page.
+ */
+int
+guestload(int *addr) {
+   return addr < (1 << 12) ? 0 : *addr;
+}
+
+string
+guestloadstr(char *addr) {
+   return addr < (1 << 12) ? "<NULL>" : (string)addr;
+}
+
+/*
+ * Initialize offsets.
+ */
+void
+initOffsets() {
+   if (threadOffset == 0 && procOffset == 0 &&
+       pidOffset == 0 && nameOffset == 0) {
+      threadOffset = offatseg(&nt!PsGetCurrentProcess);
+      procOffset   = offatret(&nt!PsGetCurrentProcess);
+      pidOffset    = offatret(&nt!PsGetCurrentProcessId);
+      nameOffset   = offatret(&nt!PsGetProcessImageFileName);
+   }
+}
+
+/*
+ * curthrptr --
+ *   Return pointer to kernel thread-private data for the current process
+ *   on the current VCPU. This might be either GSBASE or KERNELGSBASE;
+ *   testing the CPL isn't *quite* right, because there's a short window
+ *   immediately after the hardware syscall where the right value is still
+ *   in KERNELGSBASE. Assumes that the offsets are already initialized.
+ */
+char *
+curthrptr() {
+   gsbase = GSBASE >= 0x100000000 ? GSBASE : KERNELGSBASE;
+   return gsbase + threadOffset;
+}
+
+/*
+ * curprocname --
+ * curpid --
+ *   Return the current name and pid of the current process.
+ */
+string
+curprocname () {
+   initOffsets();
+   curprocptr = guestload(curthrptr() + procOffset);
+   return guestloadstr(curprocptr + nameOffset);
+}
+
+int
+curpid () {
+   initOffsets();
+   return guestload(curthrptr() + pidOffset);
+}
