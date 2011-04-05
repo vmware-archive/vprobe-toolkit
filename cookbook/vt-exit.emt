@@ -27,7 +27,7 @@
  */
 
 /*
- * Pretty-printing aggregator for VT exits
+ * Pretty-printing aggregator for VT exits.
  *
  * Warning: as a result of formatting aggregate keys in a nice,
  * human-readable format, this script incurs runtime overhead on HV
@@ -40,7 +40,7 @@ string str;
 HV_Exit {
    code = VMCS_EXIT_REASON;
    sprintf(str, "%3d ", code);
-   # Exit code 0: software exception
+   /* Exit code 0: software exception */
    if (code == 0) {
       intrInfo = VMCS_EXIT_INTR_INFO;
       faultNum = intrInfo & 0xff;
@@ -59,7 +59,7 @@ HV_Exit {
    if (code == 14) {
       sprintf(str, "%s INVLPG @%#llx", str, VMCS_EXIT_QUAL);
    }
-   # Exit code 28: CR
+   /* Exit code 28: CR */
    if (code == 28) {
       qual = VMCS_EXIT_QUAL;
       sprintf(str, "%s CR%1d", str, qual & 0xf);
@@ -70,7 +70,7 @@ HV_Exit {
       }
    }
    
-   # Exit code 30: PIO instruction
+   /* Exit code 30: PIO instruction */
    if (code == 30) {
       qual = VMCS_EXIT_QUAL;
       wasIn = qual & (1 << 3);
