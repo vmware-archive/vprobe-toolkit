@@ -4,13 +4,14 @@
  * **********************************************************/
 
 /*
- * Emmett.mly: the grammar for Emmett, a small language for specifying
+ * Emmett.mly: the grammar for Emmett, a language for specifying
  * dynamic instrumentation. Since the expression and type syntax is a
  * subset of C, most of this file is a mechanical translation of the
  * grammar in the appendix to the ISO C 99 standard.
  */
 
 %{
+  open Globals
   open Ast
   open Actions
   open Symtab
@@ -20,8 +21,13 @@
 
 %token <int64>  INTCONST
 %token <string> STRCONST
+%token <string> PNAME
 %token <string> IDENT
+%token <int>    ASSERT
 %token <string> TYPE_NAME
+%token <string> MEMMODEL_SPEC
+%token <string> SYMFILE_SPEC
+%token <string * string> TARGET_SPEC
 
 %token
   EOF ELSE IF RETURN SIZEOF TYPEDEF STATIC EXTERN REGISTER AUTO VOID CHAR
@@ -33,6 +39,7 @@
   SEMI LBRACE RBRACE COMMA COLON ASSIGN LPAREN RPAREN LBRACK RBRACK
   DOT AMPERSAND BANG TILDA QUESTION MINUS PLUS STAR DIV MOD CARET BAR
   STRING BAG AGGR AT MEMMODEL
+  PERTHREAD PERVM PERVMK PERHOST
 
 %type <unit> program
 
@@ -56,6 +63,8 @@
 %right TYPE_NAME
 %left  IDENT
 
+%nonassoc PNAME
+
 %nonassoc IF
 %nonassoc ELSE
 
@@ -66,12 +75,17 @@
 primary_expr:
   | IDENT              { actionsExprIdent $1 }
   | INTCONST           { ExprIntConst $1 }
-  | STRCONST           { ExprStrConst $1 }
+  | string_seq         { astStrConcat $1 }
   | LPAREN expr RPAREN { $2 }
 
+string_seq:
+  | STRCONST            { [$1] }
+  | STRCONST string_seq { $1 :: $2 }
+
 call_expr:
-  | IDENT LPAREN RPAREN            { actionsExprCall $1 [] }
-  | IDENT LPAREN expr_list RPAREN  { actionsExprCall $1 $3 }
+  | IDENT  LPAREN RPAREN            { ExprCall($1, []) }
+  | IDENT  LPAREN expr_list RPAREN  { ExprCall($1, $3) }
+  | ASSERT LPAREN expr_list RPAREN  { actionsAssert $1 $3 }
 
 aggr_assign_expr:
   | aggr_expr AGGR_ASSIGN assignment_expr { actionsAssignBagOrAggr $1 $3 }
@@ -215,6 +229,10 @@ storage_class_specifier:
   | STATIC   { ClassStatic }
   | AUTO     { ClassAuto }
   | REGISTER { ClassRegister }
+  | PERTHREAD { ClassPerThread }
+  | PERVM     { ClassPerVM     }
+  | PERVMK    { ClassPerVMK    }
+  | PERHOST   { ClassPerHost   }
 
 type_specifier:
   | VOID                      { SpecVoid }
@@ -222,29 +240,46 @@ type_specifier:
   | SHORT                     { SpecInt("short") }
   | INT                       { SpecInt("int") }
   | LONG                      { SpecInt("long") }
+  | SIGNED                    { SpecSign("signed") }
+  | UNSIGNED                  { SpecSign("unsigned") }
   | STRING                    { SpecString }
-  | SIGNED                    { SpecInt("signed") }
-  | UNSIGNED                  { SpecInt("unsigned") }
   | BAG                       { SpecBag }
   | AGGR                      { SpecAggr }
   | struct_or_union_specifier { $1 }
   | enum_specifier            { $1 }
   | TYPE_NAME                 { SpecTypeName($1) }
 
+/*
+ * The lexer returns a TYPE_NAME token whenever the matched symbol is 
+ * the name of a typedef type. Unfortunately, if a symbol is used both 
+ * as a typedef name and as a struct (or union, or enum) name, then the
+ * lexer's choice may be wrong. See PR 555228. Example:
+ * 
+ * typedef struct A { int x; } A;
+ * struct A *y;  // The lexer returns TYPE_NAME for A, instead of IDENT
+ *
+ * This non-terminal is a workaround for this problem. It allows 
+ * accepting both a typename and an identifer in a place where an 
+ * identifier is needed, undoing the wrong choice of the lexer.
+ */
+ident_or_type:
+  | IDENT     { $1 }
+  | TYPE_NAME { $1 }
+
 struct_or_union_specifier:
-  | STRUCT IDENT        { actionsStructDecl $2 KSTRUCT }
-  | UNION IDENT         { actionsStructDecl $2 KUNION }
+  | STRUCT ident_or_type { actionsStructDecl $2 KSTRUCT }
+  | UNION  ident_or_type { actionsStructDecl $2 KUNION }
   | struct_or_union_lbrace struct_declaration_list RBRACE
-                        { actionsStructPop $1 }
+                         { actionsStructPop $1 }
 
 struct_or_union_lbrace:
-  | STRUCT IDENT LBRACE { actionsStructPush $2 KSTRUCT }
-  | UNION IDENT LBRACE  { actionsStructPush $2 KUNION }
-  | STRUCT LBRACE       { actionsStructPush (freshStructName()) KSTRUCT }
-  | UNION LBRACE        { actionsStructPush (freshStructName()) KUNION }
+  | STRUCT ident_or_type LBRACE { actionsStructPush $2 KSTRUCT }
+  | UNION  ident_or_type LBRACE { actionsStructPush $2 KUNION }
+  | STRUCT LBRACE  { actionsStructPush (freshStructName()) KSTRUCT }
+  | UNION  LBRACE  { actionsStructPush (freshStructName()) KUNION }
 
 struct_declaration_list:
-  | struct_declaration                         { }
+  |                                            { }
   | struct_declaration struct_declaration_list { }
 
 offset:
@@ -275,12 +310,12 @@ field_width:
   | COLON positive_int31 { $2 }
 
 enum_specifier:
-  | ENUM IDENT                               { actionsEnum $2 }
+  | ENUM ident_or_type                       { SpecInt "long" }
   | enum_ident_lbrace enumerator_list RBRACE { $1 }
 
 enum_ident_lbrace:
-  | ENUM LBRACE       { actionsEnum (freshStructName()) }
-  | ENUM IDENT LBRACE { actionsEnum $2 }
+  | ENUM LBRACE               { actionsEnum (freshStructName()) }
+  | ENUM ident_or_type LBRACE { actionsEnum $2 }
 
 enumerator_list:
   | enumerator { }
@@ -388,9 +423,21 @@ selection_stmnt:
 probe_definition:
   | probe_def_begin probe_stmnt { actionsProbeDefFinish $1 $2 }
 
+/*
+ * Probe names follow special lexical rules. In the simplest case,
+ * a probe name can be an IDENT. The more complex names are
+ * recognized as PNAME tokens.
+ *
+ * We allow either IDENT or PNAME in a probe declaration, because
+ * the lexer doesn't know whether an IDENT is in fact a probe name.
+ */
+probe_name:
+  | IDENT  { $1 }
+  | PNAME  { $1 }
+
 probe_def_begin:
-  | IDENT                                   { actionsProbeDefBegin $1 [] }
-  | IDENT LPAREN parameter_list_opt RPAREN  { actionsProbeDefBegin $1 $3 }
+  | probe_name                                   { actionsProbeDefBegin $1 [] }
+  | probe_name LPAREN parameter_list_opt RPAREN  { actionsProbeDefBegin $1 $3 }
 
 function_definition:
   | function_def_begin return_compound_stmnt { actionsFuncDefFinish $1 $2 }
@@ -420,5 +467,17 @@ ext_declaration_list:
   |                                      { [] }
   | ext_declaration ext_declaration_list { $1 :: $2 }
 
+spec:
+  | TARGET_SPEC   { actionsEnvSpec $1  } 
+  | MEMMODEL_SPEC { defaultMemModel := $1 }
+  | SYMFILE_SPEC  { symbolFile := $1 }
+
+spec_sublist:
+  |                     { }
+  | spec spec_sublist   { }
+
+spec_list:
+  | spec_sublist        { actionsSpecListDone() }
+
 program:
-  | ext_declaration_list EOF  { () }
+  | spec_list ext_declaration_list EOF  { () }

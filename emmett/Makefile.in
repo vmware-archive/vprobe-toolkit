@@ -1,0 +1,76 @@
+prefix          = @prefix@
+exec_prefix     = @exec_prefix@
+bindir          = @bindir@
+srcdir          = @srcdir@
+builddir        = @builddir@
+OCAMLC          = @OCAMLC@
+OCAMLOPT        = @OCAMLOPT@
+OCAMLLEX        = @OCAMLLEX@
+OCAMLYACC       = @OCAMLYACC@
+OCAMLDEP        = @OCAMLDEP@
+EMMETT	        = emmett
+CUSTOM	        = -custom
+INSTALL         = @INSTALL@
+INSTALL_DATA    = @INSTALL_DATA@
+INSTALL_PROGRAM = @INSTALL_PROGRAM@
+INSTALL_SCRIPT  = @INSTALL_SCRIPT@
+
+# 
+# List is in order of dependency!
+#
+SOURCES = \
+	$(srcdir)/memmodel.ml \
+	$(srcdir)/ast.ml \
+	$(srcdir)/globals.ml \
+	$(srcdir)/defaults.ml \
+	$(srcdir)/symtab.ml \
+	$(srcdir)/domain.ml \
+	$(srcdir)/predef.ml \
+	$(srcdir)/type.ml \
+	$(srcdir)/actions.ml \
+	$(srcdir)/lower.ml \
+	$(srcdir)/vp.ml \
+	$(srcdir)/parser.ml \
+	$(srcdir)/lexer.ml \
+	$(srcdir)/main.ml
+
+OBJS = $(SOURCES:.ml=.cmo)
+
+.PHONY: install install-emmett
+
+$(EMMETT): $(OBJS)
+	$(OCAMLC) $(CUSTOM) -o $@ $(OBJS)
+
+%.ml: %.mll
+	$(OCAMLLEX) $<
+
+%.ml: %.mly
+	$(OCAMLYACC) $<
+
+%.cmo: %.ml
+	$(OCAMLC) -c $<
+
+%.cmi: %.mli
+	$(OCAMLC) -c $<
+
+install: install-emmett
+
+install-emmett: $(EMMETT)
+	[ ! -d $(bindir) ] && mkdir -p $(bindir) || exit 0
+	$(INSTALL_PROGRAM) -m 0755 $(EMMETT) $(bindir)
+
+.depend: $(SOURCES)
+	$(OCAMLDEP) $(SOURCES) $(SOURCES:.ml=.mli) > $@
+
+clean:
+	rm -f lexer.ml parser.ml *.mli *.cmo *.cmi .depend
+
+Makefile: Makefile.in ../config.status
+	cd .. && ./config.status $@
+
+../config.status: ../configure
+	cd .. && ./config.status --recheck
+
+ifneq ($(MAKECMDGOALS),clean)
+-include .depend
+endif

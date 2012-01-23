@@ -1,8 +1,0 @@
-(version 0.2)
-(definteger gptr)
-(definteger kptr)
-(definteger myint)
-(definteger vptr)
-
- ;;;;;
-(vprobe VMM1Hz ( do  ( setint myint    (+  (+ (& 4294967295 (getmonitor (& 4294967295 (getmonitor  (+ vptr  4 )))))  (& 4294967295 (getguest (getguest  (+ gptr  8 )))) )  (& 4294967295 (getvmkernel (getvmkernel  (+ kptr  8 )))) ))))

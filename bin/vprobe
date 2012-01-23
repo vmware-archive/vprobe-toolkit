@@ -334,7 +334,7 @@ def FetchKernelTypes():
 ################################################################################
 def GetInstalledVmrun():
     if sys.platform == 'darwin':
-        return '/Library/Application Support/VMware Fusion/vmrun'
+        return '/Applications/VMware Fusion.app/Contents/Library/vmrun'
     elif sys.platform[0:3] == 'win' or sys.platform == 'cygwin':
         for varName in ['ProgramFiles', 'ProgramFiles(x86)', 'PROGRAMFILES']:
             programFiles = os.getenv(varName)

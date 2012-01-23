@@ -1,4 +1,0 @@
-# simple test of bag syntax
-bag b[12];
-Start  b[VCPUID] <- TSC;
-Finish a[VCPUID] <- TSC - b[VCPUID];

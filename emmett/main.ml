@@ -10,11 +10,13 @@
  *)
  
 open Globals
+open Defaults
 open Symtab
 open Predef
 open Type
 open Lower
 open Vp
+open Domain
 open Printf;;
 
 type inputKind =
@@ -23,21 +25,41 @@ type inputKind =
   | InputFile of string
 
 let inputs = ref []
+let forceStdin = ref false
 
+(*
+ * parseCommandLine -- a function that parses the command line
+ * arguments. If either one of the options -c, -i, -m, and -s occurs
+ * more than once, then the last occurrence is the only one that counts.
+ * If -E or -H are used to override the compiler defaults, then
+ * set new defaults.
+ *)
 let parseCommandLine() =
+  let defaultESX() =
+    defaultDomain := "VMK";
+    multidomainSupported := true
+    in
+  let defaultHosted() =
+    defaultDomain := "VMM";
+    multidomainSupported := false
+    in
   let setCmd  cmd  = inputs := InputCmd(cmd)   :: !inputs in
   let setFile file = inputs := InputFile(file) :: !inputs in
   let printUsage() = eprintf "%s"
       ("Usage: emmett [-a] [-c <cmd>] [-i <num>] [-h] [<file1> ...]\n" ^
-           "    -a        : Periodically log and clear aggregates\n" ^
-           "    -c <cmd>  : Compile the given string\n" ^
-           "    -i <num>  : Output indentation level (default=2)\n" ^
-           "    -m <mem>  : Default memory model (default=vmw64)\n" ^
-           "    -s <file> : Guest symbol file (default=none)\n" ^
-           "    -h        : Print this usage message\n");
+       "    -a        : Periodically log and clear aggregates\n" ^
+       "    -c <cmd>  : Compile the given string\n" ^
+       "    -f        : Force parsing stdin in addition to files \n" ^
+       "    -i <num>  : Output indentation level (default=2)\n" ^
+       "    -m <mem>  : Set the memory model (default=vmw64)\n" ^
+       "    -s <file> : Guest symbol file (default=none)\n" ^
+       "    -h        : Print this usage message\n");
       exit(0) in
   let specs = [ "-a",     Arg.Set(autoAggr), "";
                 "-c",     Arg.String(setCmd), "";
+                "-E",     Arg.Unit(defaultESX), "";
+                "-H",     Arg.Unit(defaultHosted), "";
+                "-f",     Arg.Set(forceStdin), "";
                 "-i",     Arg.Set_int(indentLevel), "";
                 "-m",     Arg.Set_string(defaultMemModel), "";
                 "-s",     Arg.Set_string(symbolFile), "";
@@ -49,14 +71,15 @@ let parseCommandLine() =
   in
   (try Arg.parse_argv Sys.argv specs setFile ""
   with _ -> printUsage());
-  if !inputs = [] then inputs := [InputStdin];
-  inputs := List.rev !inputs;
-  symtabInitMemModel(!defaultMemModel)
+  if !inputs = [] || !forceStdin then
+    inputs := InputStdin :: !inputs;
+  inputs := List.rev !inputs
 
-let codeLooksLikeFilename : inputKind -> bool = function
+let codeLooksLikeFilename (kind: inputKind) (token: string) : bool =
+  match kind with
   | InputCmd(cmd) -> Sys.file_exists(cmd) ||
                      Filename.check_suffix cmd "emt"
-  | _ -> false
+  | _ -> token = "/"
 
 let filenameLooksLikeCode(fname: string) : bool =
   String.contains fname ';'
@@ -64,9 +87,9 @@ let filenameLooksLikeCode(fname: string) : bool =
 let openFile(file: string) : in_channel =
   try open_in file 
   with Sys_error(s)
-    -> if filenameLooksLikeCode(file)
-       then eprintf "Error: file name looks like code. Missing '-c'?\n"
-       else eprintf "Error: %s\n" s;
+    -> let extra = if filenameLooksLikeCode(file)
+                   then " (expecting a file name, not code)" else ""
+       in eprintf "Error: %s%s\n" s extra;
        exit 1
 
 let getLexbuf : inputKind -> Lexing.lexbuf = function
@@ -79,13 +102,17 @@ let inputName : inputKind -> string = function
   | InputCmd _      -> "<cmdline>"
   | InputFile(file) -> file
 
-let posInfo(lexbuf) : string =
-  let pos    = lexbuf.Lexing.lex_curr_p in 
-  let line   = pos.Lexing.pos_lnum in
-  let bol    = pos.Lexing.pos_bol in
-  let col    = pos.Lexing.pos_cnum - bol in
-  let tok    = Lexing.lexeme lexbuf in
-  sprintf "line %d, col %d, token '%s'" line col tok;;
+let line(lexbuf) : int =
+  let pos = lexbuf.Lexing.lex_curr_p in 
+  pos.Lexing.pos_lnum
+
+let col(lexbuf) : int =
+  let pos = lexbuf.Lexing.lex_curr_p in 
+  let bol = pos.Lexing.pos_bol in
+  pos.Lexing.pos_cnum - bol
+
+let token(lexbuf) : string =
+  Lexing.lexeme lexbuf
 
 let parseInputs() =
   let parseInput(input) =
@@ -93,11 +120,17 @@ let parseInputs() =
     let name   = inputName(input) in
     if !verbose then printf "# Parsing %s...\n" name;
     try Parser.program Lexer.token lexbuf 
-    with Parsing.Parse_error 
-      -> if codeLooksLikeFilename(input)
-         then eprintf "Error: code looks like file name. Extra '-c'?\n"
-         else eprintf "Syntax error: %s: %s\n" name (posInfo lexbuf);
+    with 
+    | Parsing.Parse_error 
+      -> let extra = if codeLooksLikeFilename (input) (Lexing.lexeme lexbuf)
+                     then " (expecting code, not a file name)" else ""
+         in eprintf "Syntax error: %s: line %d, col %d, token '%s'%s\n" 
+                    name (line lexbuf) (col lexbuf) (token lexbuf) extra;
          exit 1
+    | Failure msg 
+      -> eprintf "Error: %s: line %d: %s\n" name (line lexbuf) msg;
+         exit 1
+
   in
   List.iter parseInput !inputs;
   symtabPrintASTs();;
@@ -106,9 +139,9 @@ let parseInputs() =
 try
   insertPredefs();
   parseCommandLine();
-  parseSymbolFile();
   parseInputs();
   typeCheckPass();
+  domainPass();
   lowerPass();
   vpEmitPass()
 with

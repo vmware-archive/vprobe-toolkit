@@ -4,9 +4,10 @@
  * **********************************************************)
 
 (*
- * Esx-specific defaults.
+ * Hosted-specific defaults.
  *)
 
-let defaultCpuVar   = "PCPU"
 
-let default1HzProbe = "VMK1Hz"
+let defaultDomain   = ref "VMM"
+
+let multidomainSupported = ref false

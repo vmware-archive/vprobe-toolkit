@@ -1,1 +1,0 @@
-GUEST:nt!NtCreateThread { foo = 1 * 32; ticks[RIP] <- foo; }

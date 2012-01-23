@@ -1,9 +1,0 @@
-(version 0.2)
-(definteger bar)
-(definteger foo)
-(definteger offptr)
-
- ;;;;;
-(vprobe VMM1Hz ( printf    "barf\n"  (& 255 (getguest  (+ foo  8 )))  (& 255 (getguest  (+ foo  8 )))  (getguest (getguest bar))   (+ foo  8 )  (getguest bar) ))
- ;;;;;
-(vprobe VMMLoad ( printf    "snarf: %d %d\n"   (+ offptr  4 )   (+ offptr  8 ) ))

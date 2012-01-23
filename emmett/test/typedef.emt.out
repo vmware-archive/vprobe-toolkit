@@ -1,5 +1,0 @@
-(version 0.2)
-(definteger bar)
-
- ;;;;;
-(vprobe VMM1Hz ( do  ( setint bar    (+ bar  1 ))( printf    "bar: %d\n" )))

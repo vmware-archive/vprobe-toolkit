@@ -1,4 +1,0 @@
-Probe { 
-   foo = "string";
-   foo = 1;
-}

@@ -19,6 +19,7 @@
 open Globals
 open Ast
 open Memmodel
+open Defaults
 open Int64
 open Printf
 open Scanf
@@ -34,20 +35,24 @@ and skind =
   | KENUM
 
 type varEntry = {
-    vtyp: typ;
-    vpredef: bool;
-    init: expr option
+    vstorage: storage;
+    vtyp:     typ;
+    vpredef:  bool;
+    init:     expr option
 }
 
 type funcEntry = {
     ftyp: typ;
     fpredef: bool; 
+    (* domains from which this function is reachable: *)
+    mutable fdoms: string list;
     mutable fparms: (ident * typ) list; 
     mutable flocals: (ident * varEntry) list;
     mutable fbody: stat
 }
 
 type probeEntry = {
+    mutable pdom: string; (* domain id of the probe *)
     mutable pparms: (ident * typ) list; 
     mutable plocals: (ident * varEntry) list;
     mutable pbody: stat
@@ -71,7 +76,15 @@ type symtab = {
     mutable vars:     (ident * varEntry) list;
     mutable probes:   (ident * probeEntry) list;
     mutable funcs:    (ident * funcEntry) list;
-    mutable symmap:   (ident, int64) Hashtbl.t; 
+    mutable symmap:   (ident, int64) Hashtbl.t;
+    (* default domain for probes *)
+    mutable defdom:   string;
+    (* targs: generate VP scripts for these target domains *)
+    mutable targs:     (ident * string) list;
+    (* envsseen: list of probe environments present in emmett script *)
+    mutable envsseen: string list;
+    (* curenv: current environment during vp code emit phase *)
+    mutable curenv:   string;
     mutable memmodel: ident;
     mutable ctxstack: ctx list;
     mutable ecounter: int64;
@@ -81,10 +94,12 @@ type symtab = {
 let tab: symtab = { 
   vars=[]; econsts=[]; typedefs=[]; structs=[]; probes=[]; funcs=[];
   symmap=Hashtbl.create 1021;
+  defdom = ""; targs=[]; envsseen=[]; curenv="";
   memmodel="vmw64"; ctxstack=[CtxGlobal]; ecounter=Int64.zero; predef=false
 }
 
-let symtabInitMemModel(mm: mmident) : unit =
+let symtabInitMemModel() : unit =
+  let mm = !defaultMemModel in
   if not (mmValidMemModel mm) then
     failwith ("Invalid memory model: " ^ mm);
   tab.memmodel <- mm
@@ -96,34 +111,55 @@ let skindToString(k: skind) : string =
   | KENUM   -> "enum"
 
 (*
- * Functions that check membership to various symbol classes.
+ * symtabIsTypedef -- Return true iff the given symbol is a type name.
  *)
 let symtabIsTypedef(id) : bool = List.mem_assoc id tab.typedefs
-let symtabIsFunc(id) : bool    = List.mem_assoc id tab.funcs
 
-let symtabIsVar(id) : bool =
-  match List.hd tab.ctxstack with
+(*
+ * symtabIdentDefinedInCtx --
+ * Return true iff the given symbol is already defined as a variable,
+ * function, type, or enum constant in the current scope.
+ *)
+let symtabIdentDefinedInCtx(id) (ctx) : bool =
+  match ctx with
   | CtxGlobal ->
-      List.mem_assoc id tab.vars
+      List.mem_assoc id tab.vars ||
+      List.mem_assoc id tab.funcs ||
+      List.mem_assoc id tab.typedefs ||
+      List.mem_assoc id tab.econsts
   | CtxFunc fid ->
       let fe = List.assoc fid tab.funcs in
       List.mem_assoc id fe.flocals ||
-      List.mem_assoc id fe.fparms ||
-      List.mem_assoc id tab.vars
+      List.mem_assoc id fe.fparms
   | CtxProbe pid -> 
       let pe = List.assoc pid tab.probes in
       List.mem_assoc id pe.plocals ||
-      List.mem_assoc id pe.pparms ||
-      List.mem_assoc id tab.vars
+      List.mem_assoc id pe.pparms
   | _ -> failwith "Not reached"
 
+(*
+ * symtabIdentDefined --
+ * Similar to symtabIdentDefinedInCtx, but checks both the current
+ * scope and all enclosing scopes.
+ *)
+let symtabIdentDefined(id) : bool =
+  List.exists (symtabIdentDefinedInCtx id) tab.ctxstack 
 
 (*
- *  Functions that add entries to the symbol table: variables, structures,
- *  structure fields, functions, probes, etc.
+ *  symtabCheckIdentVFT -- 
+ *  symtabCheckGlobalIdentVFT -- 
+ *  Trigger a compilation error iff the given identifier conflicts
+ *  with other variables/functions/types/enum constants within the
+ *  current scope or the global scope. The latter is used for
+ *  enumeration constants, which are automatically promoted to the
+ *  global scope.
  *)
 let symtabCheckIdentVFT (id: ident) : unit =
-  if symtabIsVar(id) || symtabIsFunc(id) || symtabIsTypedef(id)
+  if symtabIdentDefinedInCtx id (List.hd tab.ctxstack)
+  then failwith ("Symbol already declared: " ^ id)
+
+let symtabCheckGlobalIdentVFT (id: ident) : unit =
+  if symtabIdentDefinedInCtx id (CtxGlobal)
   then failwith ("Symbol already declared: " ^ id)
 
 let rec typeDowngrade(t: typ): typ =
@@ -148,7 +184,43 @@ let symtabProcessInitializer(e: expr option) (t: typ) : expr option =
   | Some(ExprStrConst _) as e', TypeString -> e'
   | _ -> failwith "Invalid initializer"
 
-let symtabVarDeclInit (id: ident) (t: typ) (e: expr option)
+
+(*
+ * Check validity of storage class for variable 'id'. If no storage class
+ * is given, determine default depending on variable type.
+ * Returns the storage class for the variable.
+ *)
+let symtabGetStorageClass (id: ident) (scl: storage list) (t: typ): storage =
+  match scl with
+  | [sc; _]
+     -> failwith (sprintf "more than one storage class specified for variable %s" id)
+  | [sc] ->
+    (match t, sc with
+    | _ , ClassPerHost
+    | _ , ClassPerVMK
+    | _ , ClassPerVM when not !multidomainSupported
+      -> failwith (sprintf "storage class '%s' unsupported" (sclassToString sc))
+    | TypeInt _,   ClassPerDomain
+    | TypeInt _,   ClassPerVM
+    | TypeInt _,   ClassPerVMK
+    | TypeInt _,   ClassPerHost
+    | TypeString,  ClassPerDomain
+    | TypeString,  ClassPerVM
+    | TypeString,  ClassPerVMK
+    | TypeString,  ClassPerHost
+    | TypeBag _,   ClassPerThread
+    | TypeAggr _,  ClassPerThread 
+      -> failwith (sprintf "unsupported storage class '%s' for variable %s"
+                           (sclassToString sc) id)
+    | _ -> sc)
+  | _ -> (* Determine default storage class *)
+    (match t with
+    | TypeAggr _
+    | TypeBag _ -> ClassPerDomain
+    | _ -> ClassPerThread)
+
+
+let symtabVarDeclInit (id: ident) (scl: storage list) (t: typ) (e: expr option)
                       (auto: bool) : unit =
   symtabCheckIdentVFT(id);
   let t = try typeDowngrade t
@@ -156,8 +228,9 @@ let symtabVarDeclInit (id: ident) (t: typ) (e: expr option)
               (match t with 
               | TypeFunc _ -> "Function declaration not allowed: " ^ id
               | _ -> "Invalid type for variable " ^ id) in
+  let sc = symtabGetStorageClass id scl t in
   let i  = symtabProcessInitializer e t in
-  let ve = { vtyp=t; vpredef=tab.predef; init=i } in
+  let ve = { vstorage=sc; vtyp=t; vpredef=tab.predef; init=i } in
   if List.hd(tab.ctxstack) = CtxGlobal || auto then
     tab.vars <- (id, ve) :: tab.vars
   else
@@ -171,10 +244,10 @@ let symtabVarDeclInit (id: ident) (t: typ) (e: expr option)
     | _ -> failwith "Not reached"
 
 let symtabVarDecl (id: ident) (t: typ) (auto: bool) : unit =
-  symtabVarDeclInit id t None auto
+  symtabVarDeclInit id [] t None auto
 
 let symtabEnumConstDecl (id: ident) (o: expr option) : unit =
-  symtabCheckIdentVFT(id);
+  symtabCheckGlobalIdentVFT(id);
   let n = match o with
           | None -> tab.ecounter
           | Some(ExprIntConst m) -> m
@@ -199,7 +272,7 @@ let symtabProbeInsert (id: ident) (p: (ident * typ) list) (b: stat): ident =
   symtabCheckParms(p);
   List.iter (fun (par, _) -> symtabCheckIdentVFT par) p;
   let id' = sprintf "%d:%s" (List.length tab.probes) id in
-  tab.probes <- (id', { pparms=p; plocals=[]; pbody=b }) :: tab.probes;
+  tab.probes <- (id', { pdom=""; pparms=p; plocals=[]; pbody=b }) :: tab.probes;
   id'
 
 let symtabProbeId(id: ident) : int=
@@ -213,7 +286,8 @@ let symtabFuncInsert (id: ident) (t: typ) (p: (ident * typ) list) : unit =
   symtabCheckParms(p);
   List.iter (fun (par, _) -> symtabCheckIdentVFT par) p;
   tab.funcs <- (id, { ftyp=t; fpredef=tab.predef;
-                      fparms=p; flocals=[]; fbody=StatEmpty; }) :: tab.funcs
+                      fdoms=[]; fparms=p; flocals=[]; 
+                      fbody=StatEmpty; }) :: tab.funcs
 
 let symtabTypeDecl (id: ident) (t: typ) : unit =
   symtabCheckIdentVFT(id);
@@ -288,6 +362,17 @@ let symtabSetMemModel (id: ident) : unit =
 
 let symtabGetMemModel(): ident = tab.memmodel
 
+
+(*
+ * Setting and getting of "current environment", ie. the
+ * environment for which code is being generated. 
+ *)
+let symtabSetCurEnv(env: string): unit =
+  tab.curenv <- env
+
+let symtabCurEnv(): string =
+  tab.curenv
+
 (*
  * Function that lookup information in the symbol table.
  *)
@@ -305,23 +390,35 @@ let symtabLookupField(s: ident) (f: ident) =
   try List.find (fun (f', _, _, _) -> f = f') se.flds
   with Not_found -> failwith("Field " ^ f ^ " not found")
 
-let symtabLookupVarType(id: ident) : typ =
+
+let symtabLookupVar(id: ident) : (storage * typ) =
+  let varinfo id varEntries = 
+    let ve = List.assoc id varEntries in (ve.vstorage, ve.vtyp)
+  in
   match List.hd tab.ctxstack with
-  | CtxGlobal -> (symtabGetVar id).vtyp
+  | CtxGlobal -> varinfo id tab.vars
   | CtxFunc fid -> 
       (let fe = symtabGetFunc(fid) in
-      try (List.assoc id fe.flocals).vtyp
+      try varinfo id fe.flocals
       with Not_found -> 
-        try List.assoc id fe.fparms
-        with Not_found -> (symtabGetVar id).vtyp)
+        try (ClassPerThread, List.assoc id fe.fparms)
+        with Not_found -> varinfo id tab.vars)
   | CtxProbe pid -> 
       (let pe = symtabGetProbe(pid) in
-      try (List.assoc id pe.plocals).vtyp
+      try varinfo id pe.plocals
       with Not_found ->
-        try List.assoc id pe.pparms
-        with Not_found -> (symtabGetVar id).vtyp)
+        try (ClassPerThread, List.assoc id pe.pparms)
+        with Not_found -> varinfo id tab.vars)
   | _ -> failwith "Not reached"
 
+let symtabLookupVarType(id: ident): typ =
+  snd (symtabLookupVar id)
+
+(* 
+ * Return true if there are any "perhost" variables in the script.
+ *)
+let symtabHasSharedVars() : bool =
+  List.exists (fun(v,ve) -> ve.vstorage == ClassPerHost) tab.vars  
 
 (*
  * A function that looks up a local variable or a parameter in a
@@ -338,7 +435,9 @@ let symtabLookupLocal(id: ident) : (string * string * int) option =
   | CtxFunc fid -> 
       let fe = symtabGetFunc(fid) in
       if List.mem_assoc id fe.flocals then
-        Some("func", "local", index 0 fid (List.rev tab.funcs))
+        (* Ignore builtins when computing the function index. *)
+        let list = List.filter (fun (_, e) -> not e.fpredef) tab.funcs in
+        Some("func", "local", index 0 fid (List.rev list))
       else if List.mem_assoc id fe.fparms then
         Some("func", "parm", index 0 id fe.fparms)
       else
@@ -383,8 +482,8 @@ let rec symtabPrintStructs() : unit =
     else printf "\n" in
   List.iter printStruct (List.rev tab.structs)
 
-let symtabVarEntry(id: ident) (ve:varEntry) : string =
-  sprintf "%s: %s%s" id (typeToString ve.vtyp)
+let symtabVarEntry(id: ident) (ve: varEntry) : string =
+  sprintf " %s %s: %s%s" (sclassToString ve.vstorage) id (typeToString ve.vtyp)
     (match ve.init with
     | None -> ""
     | Some e -> " = " ^ (exprToString e))
@@ -482,5 +581,3 @@ let parseSymbolFile() =
     with End_of_file -> close_in file;
     if !verbose then
       printf "# Loaded %d symbols\n" (Hashtbl.length tab.symmap)
-      
-

@@ -1,7 +1,0 @@
-typedef int booze;
-booze bar;
-
-VMM1Hz {
-   bar = bar + 1;
-   printf("bar: %d\n");
-}

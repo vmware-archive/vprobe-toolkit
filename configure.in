@@ -1,0 +1,42 @@
+AC_PREREQ(2.59)
+AC_INIT([vprobe-toolkit], [2011], [vprobes@vmware.com])
+AC_CONFIG_MACRO_DIR([m4])
+
+AC_PROG_INSTALL
+
+#
+# Look for python
+#
+ AX_WITH_PYTHON
+ if test "x$PYTHON" = "x"; then
+     AC_MSG_ERROR( [Python not found. Use --with-python to specify path to python binary] )
+else
+     AC_MSG_CHECKING($PYTHON version >= 2.5)
+     if test [`$PYTHON -c "import sys; print sys.version[:3] > \"2.5\" and \"ok\" or \"no\""` = "ok"]; then
+        AC_MSG_RESULT(ok)
+     else
+        AC_MSG_RESULT(no)
+        AC_MSG_ERROR([Python version is too old, need version 2.5 or above.])
+     fi
+fi
+
+#
+# Look for OCAML, OCAML lexer and parser generators
+#
+AC_PROG_OCAML
+if test "$OCAMLC" = "no"; then
+    AC_MSG_ERROR([Please install the OCaml compiler])
+fi
+
+AC_PROG_OCAMLLEX
+if test "$OCAMLLEX" = "no"; then
+    AC_MSG_ERROR([Please install OCaml lexer generator])
+fi
+
+AC_PROG_OCAMLYACC
+if test "$OCAMLYACC" = "no"; then
+    AC_MSG_ERROR([Please install the OCaml parser generator])
+fi
+
+AC_CONFIG_FILES([Makefile emmett/Makefile]) 
+AC_OUTPUT

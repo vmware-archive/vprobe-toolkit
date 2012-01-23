@@ -1,6 +1,0 @@
-int returnsInt();
-string strvar;
-
-Probe {
-   strvar = returnsInt();
-}
