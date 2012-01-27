@@ -8,38 +8,50 @@ OCAMLOPT        = @OCAMLOPT@
 OCAMLLEX        = @OCAMLLEX@
 OCAMLYACC       = @OCAMLYACC@
 OCAMLDEP        = @OCAMLDEP@
-EMMETT	        = emmett
+OCAMLJAVA       = @OCAMLJAVA@
 CUSTOM	        = -custom
 INSTALL         = @INSTALL@
 INSTALL_DATA    = @INSTALL_DATA@
 INSTALL_PROGRAM = @INSTALL_PROGRAM@
 INSTALL_SCRIPT  = @INSTALL_SCRIPT@
+JAVA        	= @JAVA@
 
 # 
 # List is in order of dependency!
 #
 SOURCES = \
-	$(srcdir)/memmodel.ml \
-	$(srcdir)/ast.ml \
-	$(srcdir)/globals.ml \
-	$(srcdir)/defaults.ml \
-	$(srcdir)/symtab.ml \
-	$(srcdir)/domain.ml \
-	$(srcdir)/predef.ml \
-	$(srcdir)/type.ml \
-	$(srcdir)/actions.ml \
-	$(srcdir)/lower.ml \
-	$(srcdir)/vp.ml \
-	$(srcdir)/parser.ml \
-	$(srcdir)/lexer.ml \
-	$(srcdir)/main.ml
+	memmodel.ml \
+	ast.ml \
+	globals.ml \
+	defaults.ml \
+	symtab.ml \
+	domain.ml \
+	predef.ml \
+	type.ml \
+	actions.ml \
+	lower.ml \
+	vp.ml \
+	parser.ml \
+	lexer.ml \
+	main.ml
 
-OBJS = $(SOURCES:.ml=.cmo)
+TARGETS = emmett
+ifneq ($(OCAMLJAVA),)
+    TARGETS += emmett.jar
+endif
 
-.PHONY: install install-emmett
+emmett-OBJS     = $(SOURCES:.ml=.cmo)
+emmett-jar-OBJS = $(SOURCES:.ml=.cmj)
 
-$(EMMETT): $(OBJS)
-	$(OCAMLC) $(CUSTOM) -o $@ $(OBJS)
+.PHONY: install install-emmett all
+
+all: $(TARGETS)
+
+emmett: $(emmett-OBJS)
+	$(OCAMLC) $(CUSTOM) -o $@ $(emmett-OBJS)
+
+emmett.jar: $(emmett-jar-OBJS)
+	$(OCAMLJAVA) -standalone -o $@ $(emmett-jar-OBJS)
 
 %.ml: %.mll
 	$(OCAMLLEX) $<
@@ -47,23 +59,33 @@ $(EMMETT): $(OBJS)
 %.ml: %.mly
 	$(OCAMLYACC) $<
 
-%.cmo: %.ml
-	$(OCAMLC) -c $<
-
 %.cmi: %.mli
 	$(OCAMLC) -c $<
 
-install: install-emmett
+%.cmo: %.ml
+	$(OCAMLC) -c $<
 
-install-emmett: $(EMMETT)
+%.cmj: %.ml
+	$(OCAMLJAVA) -c $<
+
+install: install-emmett 
+
+install-emmett: emmett
 	[ ! -d $(bindir) ] && mkdir -p $(bindir) || exit 0
-	$(INSTALL_PROGRAM) -m 0755 $(EMMETT) $(bindir)
+	$(INSTALL_PROGRAM) -m 0755 emmett $(bindir)
 
 .depend: $(SOURCES)
 	$(OCAMLDEP) $(SOURCES) $(SOURCES:.ml=.mli) > $@
 
+.depend-java: $(SOURCES)
+	$(OCAMLDEP) $(SOURCES) $(SOURCES:.ml=.mli) | \
+		grep '\.cmx' | \
+		sed 's/\.cmx/\.cmj/g' > $@
+
 clean:
-	rm -f lexer.ml parser.ml *.mli *.cmo *.cmi .depend
+	rm -f lexer.ml parser.ml *.mli *.cmo *.cmi \
+			.depend .depend-java *.cmj *.jo \
+			emmett emmett.jar
 
 Makefile: Makefile.in ../config.status
 	cd .. && ./config.status $@
@@ -72,5 +94,8 @@ Makefile: Makefile.in ../config.status
 	cd .. && ./config.status --recheck
 
 ifneq ($(MAKECMDGOALS),clean)
--include .depend
+  -include .depend
+  ifneq ($(OCAMLJAVA),)
+    -include .depend-java
+  endif
 endif
