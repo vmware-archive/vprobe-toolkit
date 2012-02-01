@@ -20,20 +20,20 @@ JAVA        	= @JAVA@
 # List is in order of dependency!
 #
 SOURCES = \
-	memmodel.ml \
-	ast.ml \
-	globals.ml \
-	defaults.ml \
-	symtab.ml \
-	domain.ml \
-	predef.ml \
-	type.ml \
-	actions.ml \
-	lower.ml \
-	vp.ml \
-	parser.ml \
-	lexer.ml \
-	main.ml
+	$(srcdir)/memmodel.ml \
+	$(srcdir)/ast.ml \
+	$(srcdir)/globals.ml \
+	$(srcdir)/defaults.ml \
+	$(srcdir)/symtab.ml \
+	$(srcdir)/domain.ml \
+	$(srcdir)/predef.ml \
+	$(srcdir)/type.ml \
+	$(srcdir)/actions.ml \
+	$(srcdir)/lower.ml \
+	$(srcdir)/vp.ml \
+	$(builddir)/parser.ml \
+	$(builddir)/lexer.ml \
+	$(srcdir)/main.ml
 
 TARGETS = emmett
 ifneq ($(OCAMLJAVA),)
@@ -86,12 +86,6 @@ clean:
 	rm -f lexer.ml parser.ml *.mli *.cmo *.cmi \
 			.depend .depend-java *.cmj *.jo \
 			emmett emmett.jar
-
-Makefile: Makefile.in ../config.status
-	cd .. && ./config.status $@
-
-../config.status: ../configure
-	cd .. && ./config.status --recheck
 
 ifneq ($(MAKECMDGOALS),clean)
   -include .depend

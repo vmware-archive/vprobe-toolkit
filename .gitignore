@@ -11,3 +11,4 @@ emmett/emmett
 emmett/.depend
 emmett/lexer.ml
 emmett/parser.ml
+.DS_Store

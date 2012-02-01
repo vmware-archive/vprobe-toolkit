@@ -1,8 +1,25 @@
 AC_PREREQ(2.59)
 AC_INIT([vprobe-toolkit], [2011], [vprobes@vmware.com])
 AC_CONFIG_MACRO_DIR([m4])
-
 AC_PROG_INSTALL
+
+# Check host
+host_os=`uname`
+host_rel=`uname -r`
+
+AC_SUBST(HOST_OS,[$host_os])
+AC_SUBST(HOST_REL,[$host_rel])
+
+if test "x$host_os" = "xDarwin"; then
+    # check Darwin version >= 8.0 (MacOS 10.4)
+    AX_COMPARE_VERSION([$host_rel],[ge],[8.0],[
+        # check if packagemaker is installed
+        pm_path="/Developer/usr/bin"
+        AC_CHECK_PROG([PACKAGEMAKER],packagemaker,
+                      [$pm_path/packagemaker],
+                      [no],[$pm_path])
+    ],[])
+fi
 
 AX_WITH_PYTHON
 if test "x$PYTHON" = "x"; then
@@ -75,5 +92,8 @@ if test "$OCAMLDEP" = "no"; then
     AC_MSG_ERROR([Please install the OCaml dependency generator])
 fi
 
-AC_CONFIG_FILES([Makefile emmett/Makefile]) 
+
+AC_CONFIG_FILES([Makefile 
+                 emmett/Makefile
+                 installer/macos/Makefile]) 
 AC_OUTPUT
