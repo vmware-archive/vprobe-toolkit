@@ -1,127 +1,117 @@
+# VProbe Toolkit
 
-VProbe Toolkit
-==============
+VProbes is a safe, dynamic technology for transparently instrumenting
+a powered-on guest operating system, its currently running processes,
+and VMware's virtualization software. VProbes provides, both dynamically
+and statically defined probes. You can find more detailed documentation
+for VProbes at the [community website](http://communities.vmware.com/community/vmtn/developer/forums/vprobes)
 
-This toolkit provides an interactive, programmer-friendly interface to
-VMware's VProbes facility.  VProbes is a safe, dynamic technology for
-instrumenting software running in virtual machines, and the
-virtualization software stack itself.
+This Toolkit provides an interactive, programmer-friendly interface to
+VProbes. It allows you to write instrumentation scripts using a C-like
+high-level language called Emmett as a replacement for the more
+primitive VP language native to VProbes.
 
-You can find more detailed documentation for VProbes in the manuals in
-the doc/ directory.
 
-License
--------
+## License
 
 See License.txt
 
 
-Overview
---------
+## Overview
 
 This toolkit consists the following:
 
 1. Source code for the Emmett compiler (emmett).
-2. VProbes documentation (doc).
-3. Emmett examples (cookbook).
-4. Some sample scripts that monitor interesting events in linux guests
-(bin).
+2. Example VProbes scripts written in Emmett (cookbook).
+3. Some sample scripts that monitor interesting events in Linux
+   guests (bin).
 
 
-Versions
---------
+## Compatibility
 
-VProbes initially shipped with Workstation 6.5.  An updated version of
-the VProbe engine is also available with Workstation 7.x and Fusion 3.
+This toolkit is compatible with the following products:
 
-There are distinct tags for each version of Workstation supported.  So
-if you are running Workstation 6.5 then please sync to the ws6.5 tag.
-Otherwise sync to the ws7.0 tag (works with 7.0, 7.1, and Fusion 3).
-
-If at all possible we recommend updating to the latest version of
-Workstation.  The ws6.5 version uses an older version of the Emmett
-compiler which is no longer supported. 
+    VMware Workstation 8
+    VMware Fusion 4
 
 
-Requirements
-------------
+## Build and Install
 
-Currently the VProbe toolkit only runs on linux hosts, i.e. you must be
-running workstation on a linux machine.  We are working on porting the
-toolkit to Windows and Mac. 
+This toolkit can be built and installed on a MacOS X or a GNU/Linux
+based system (such as Ubuntu). There are some dependencies you must
+satisfy before building the toolkit.
 
-For ws6.5 you will need a recent version of the Haskell compiler.  On
-debian-based systems run
+1. Python (2.5.x .. 2.7.x) - You must have Python installed in your
+   system to be able to run the VProbes command-line application.
 
-    sudo apt-get install ghc
+2. OCaml (>= 3.11.2) - You need the OCaml toolchain to be able to
+   build `emmett` (the VProbes compiler).
 
-For ws7.x you will need to have java installed on your system.  If you
-don't have java, or you wish to compile the "native" Emmett compiler you
-will need a recent version of the Ocaml compiler.  On debian-based
-systems run
+Once you have the required software packages, building is as simple
+as,
 
-    sudo apt-get install ocaml-nox
-
-We also provide mechanism to re-compile the Emmett compiler into Java
-byte codes.  The generated executable is a .jar file which you can run
-with any platform that has a recent version of the Java Runtime (JRE).
+    vprobe-toolkit/ $ ./configure 
+    vprobe-toolkit/ $ make
+    vprobe-toolkit/ $ [sudo] make install
 
 
-Getting Started
----------------
-If you have java, simply add the bin directory to your path, e.g.
+The toolkit files should be installed in the appropriate system
+locations.
 
-    export PATH=\$PATH:$dir/bin # (sh, bash, zsh)
- or
-    setenv PATH \$PATH:$dir/bin # (csh, tcsh)
 
-If you don't have java then first run the install.sh script to compile
-the Emmett compiler and then follow the instructions on the screen.  
+### Get OCaml on MacOS X
 
-You are now ready to trye some of the samples in the cookbook directory.
+We recommend using the binary available at,
 
-Running VProbes
----------------
+http://caml.inria.fr/pub/distrib/ocaml-3.11/ocaml-3.11.2-intel.dmg
+
+If you use Macports, you can also install OCaml by doing,
+
+    $ port install ocaml
+
+### Getting OCaml on Linux
+
+If you are using a Debian based system you can get OCaml, as follows,
+
+    $ [sudo] apt-get install ocaml-nox
+
+This will vary depending on your Linux distribution and package manager.
+
+
+## Enable VProbes
 
 Before you use the toolkit you must enable VProbes and verify that it is
-working correctly.
+working correctly. VProbes must be both enabled in a system wide configuration
+file for your installation of VMware Workstation (on Linux) or VMware Fusion
+(on MacOS X), and 
 
-First you need to enable VProbes globally for the installation.  To do
-this please first suspend or power down all VM's and quit
-workstation/Fusion.  Then add the following 
+First, you need to enable VProbes globally for your installation of VMware
+Workstation (on Linux) or VMware Fusion (on Mac OS X).
+
+### MacOS X (>= 10.4)
+
+If you are already running VMware Fusion, please power down all VM's and
+quit Fusion. Then add the following line,
 
     vprobe.allow = TRUE
 
-to the system-wide configuration file.  The standard location for the
-system-wide configuration file is
+to the following file,
 
-- Windows
+    /Library/Application\ Support/VMware Fusion/config
 
-  C:\Documents and Settings\All Users\Application Data\VMware\VMware Workstation\config.ini
-
-- MacOS
-
-  /Library/Application Support/VMware Fusion/config
-
-- Linux
-
-  /etc/vmware/config
-
-If the file does not already exist, then create it and add the one line.
-
-You must then enable VProbes for each VM you want to probe.  To do this
-add
+After this, you must then enable VProbes for each VM you want to probe, by
+adding the following line to `.vmx` file of the VM.
 
     vprobe.enable = TRUE
 
-to the .vmx file of that VM while it is power-off or suspended.  Changes
-made to the .vmx file while the VM is running won't take effect and, in
-some cases, may be lost.  So please make sure to edit the file while the
+Changes made to the .vmx file while the VM is running won't take effect and,
+in some cases, may be lost.  So please make sure to edit the file while the
 VM is either suspended or powered off.
 
 To verify that everything is working you can run the following command
 
-    vmrun vprobeVersion <path to your vmx file>
+    $ VMRUN="/Applications/VMware Fusion.app/Contents/Library/vmrun"
+    $ $VMRUN vprobeVersion </path/to/your/vmx/file>
 
 You should see the following
 
@@ -130,21 +120,103 @@ You should see the following
 If you don't see this message then something is wrong and VProbes has
 not been enabled correctly for that VM.
 
-You are now ready to start probing a VM.  If you added the toolkit bin
-directory to your path you can now run vprobes.  For example to get a
-list of probe available in a VM run
+### GNU/Linux
 
-    vprobe -p <path to vmx>
+If you are already running VMware Workstation, please power down all VM's
+and quit Workstation. Then add the following line,
 
-The following script prints a line every time the VM sends a packet on
-the virtual NIC.
+    vprobe.allow = TRUE
 
-    vprobe -c 'MAC_SendPacket { printf("Sending a packet!\n"); }' <path to vmx>
+to the following file,
 
-Support
--------
+    /etc/vmware/config
+
+After this, you must then enable VProbes for each VM you want to probe, by
+adding the following line to `.vmx` file of the VM.
+
+    vprobe.enable = TRUE
+
+Note, changes made to the .vmx file while the VM is running won't take effect
+and, in some cases, may be lost.  So please make sure to edit the file while
+the VM is either suspended or powered off.
+
+To verify that everything is working you can run the following command
+
+    $ VMRUN="/usr/bin/vmrun"
+    $ $VMRUN vprobeVersion </path/to/your/vmx/file>
+
+You should see the following
+
+    VProbes version: 1.0 (enabled)
+
+If you don't see this message then something is wrong and VProbes has
+not been enabled correctly for that VM.
+
+## Ready
+
+You are now ready to start probing a VM. Depending on where you installed
+the toolkit, the vprobe application should now be available in your path.
+
+To get a quick listing of all available probes in your VM, you can do:
+
+    vprobe -p <path/to/vmx>
+
+As a quick example, here's a one-liner that prints something every time
+the VM sends a packet on the virtual NIC.
+
+    vprobe -c 'MAC_SendPacket { printf("Sending a packet!\n"); }' <path/to/vmx>
+
+## Support
 
 If you have any questions please visit the [VProbes Community
 forum](http://communities.vmware.com/community/developer/forums/vprobes).
- 
 
+## Notes for Toolkit Developers
+
+The toolkit uses GNU Make and Autoconf for managing build configuration.
+The Autoconf configuration template is: `$(src)/configuration.in`. To
+make things convenient, the `configure</code>` script generated by
+autoconf is also checked in as part of the source. The assumption is
+that `configure.in` will not be modified very often. If it is modified,
+you must perform the following steps:
+
+    vprobe-toolkit/ $ aclocal -I m4 --force
+    vprobe-toolkit/ $ autoreconf -I m4 -f -i
+
+This will generate an updated `configure` script. **Don't forget to
+check-in the updated script!**
+
+### Building the MacOS X Installer Package 
+
+The toolkit build system can build an installer package compatible with modern
+versions of Mac OS X (>= 10.4). It uses the free PackageMaker application that
+comes with Apple's Xcode development suite, so make sure you have Xcode
+installed. To build the package, perform the following commands at the root of
+the toolkit source tree,
+
+    vprobe-toolkit/ $ ./configure
+    vprobe-toolkit/ $ make
+    vprobe-toolkit/ $ make -C installer/macos
+
+This will build `vprobe-toolkit.pkg` in `$(src)/installer/macos</code>`.
+
+The PackageMaker metadata documents are stored in
+`$(src)/installer/macos/vprobe-toolkit.pmdoc`. If you want to modify the
+installer, you must open this document with the PackageMaker application.
+
+    $ /Developer/Applications/Utilities/PackageMaker.app/Contents/MacOS/PackageMaker $(src)/installer/macos/vprobe-toolkit.pmdoc
+
+### Building Emmett.jar (Experimental)
+
+You can create a Java version of `emmett` using `ocamljava`. Because
+write-once-run-anywhere. Right?
+
+Download [Ocaml-Java](http://ocamljava.x9c.fr/downloads.html) binary tarball,
+untar it into a known location.
+
+Once setup, you can build `emmett.jar` by specifying the path to `ocamljava`
+installation.
+
+    vprobe-toolkit/ $ ./configure --with-ocamljava=/path/to/ocamljava/install/dir
+    vprobe-toolkit/ $ make
+    vprobe-toolkit/ $ [sudo] make install
