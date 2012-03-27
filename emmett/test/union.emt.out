@@ -1,5 +1,0 @@
-(version 0.2)
-(definteger sptr)
-
- ;;;;;
-(vprobe VMM1Hz ( printf    "%d %d %d\n"  sptr   (+ sptr  8 )   (+ sptr  8 ) ))

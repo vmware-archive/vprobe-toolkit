@@ -1,6 +1,0 @@
-(version 0.2)
-(defstring garth)
-(defaggr strAggr 0 2)
-
- ;;;;;
-(vprobe Probe0 ( do  ( setstr garth   "fooble")( aggr  strAggr () ( garth "warb") 123)( setstr garth   "woobers")))

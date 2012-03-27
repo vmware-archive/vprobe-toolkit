@@ -1,0 +1,16 @@
+*.pyc
+Makefile
+/config.status
+/autom4te.cache
+/aclocal.m4
+/config.log
+emmett/*.cmi
+emmett/*.cmo
+emmett/*.mli
+emmett/emmett
+emmett/.depend
+emmett/lexer.ml
+emmett/parser.ml
+installer/macos/pkgroot
+installer/macos/vprobe-toolkit.pkg
+.DS_Store

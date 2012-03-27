@@ -15,15 +15,7 @@ open Symtab
 open Memmodel
 open Int64
 
-(*
- * autoDeclareVars -- a variable that controls whether to auto-declare
- * undeclared variables when looking for the type of an expression.
- * Turned on during the type-checking phase, and turned off elsewhere.
- *)
-let autoDeclareVars = ref false
-
 exception TypeError   of string
-exception NotDeclared of ident
 exception AssignError of string
 
 let rec unwrap : typ -> typ = function
@@ -95,10 +87,7 @@ and checkOffset (n: int64) (o: int64) (f: ident) : int64 =
 
 let getIdType(id: ident) : typ =
   try unwrap (symtabLookupVarType id)
-  with Not_found -> 
-    if !autoDeclareVars 
-    then (symtabVarDecl id typeInt true; typeInt)
-    else raise (NotDeclared id)
+  with Not_found -> failwith ("Undeclared symbol: " ^ id)
 
 let getRetType(fid: ident) : typ =
   match (symtabGetFunc fid).ftyp with
@@ -125,11 +114,6 @@ let typeIsIntLike(t: typ) : bool =
   | TypeInt _ | TypePtr _ | TypeArray _ -> true
   | _ -> false
 
-let typeIsPtrOrArray(t: typ) : bool =
-  match unwrap(t) with
-  | TypePtr _ | TypeArray _-> true
-  | _ -> false
-
 let typeIsStrOrCharPtr(t: typ) : bool =
   match unwrap(t) with
   | TypeString -> true
@@ -138,16 +122,12 @@ let typeIsStrOrCharPtr(t: typ) : bool =
   | _ -> false
 
 let checkAssignTypes(left: typ) (right: typ) : typ =
-  let assignError t1 t2 = 
-    raise (AssignError (", " ^ (typeToString t1) ^
-                        " assigned to " ^ (typeToString t2))) in
   match unwrap(left), unwrap(right) with
-  | (TypeInt _,  TypeInt _)
-  | (TypeInt _,  TypePtr _)
-  | (TypePtr _,  TypePtr _)
-  | (TypePtr _,  TypeInt _)
-  | (TypeString, TypeString) -> right
-  | _ -> assignError right left
+  | (TypeInt _,  t) when typeIsIntLike(t) -> right
+  | (TypePtr _,  t) when typeIsIntLike(t) -> right
+  | (TypeString, TypeString)              -> right
+  | _ -> raise (AssignError (", " ^ (typeToString right) ^
+                        " assigned to " ^ (typeToString left)))
 
 let rec exprTypeOk(e: expr) : unit =
   ignore(getExprType e)
@@ -167,7 +147,7 @@ and getExprType(e: expr) : typ =
     | ExprStrConst _ -> TypeString
     | ExprIntConst _ -> typeInt
     | ExprIdent(id)  -> getIdType(id)
-    | ExprAddr(e1)   -> TypePtr(!defaultMemModel, getExprTypeRaw e1)
+    | ExprAddr(mm,e1) -> TypePtr(mm, getExprTypeRaw e1)
     | ExprUnary(op, e1) ->
         let t1 = getExprType e1 in
         if (typeIsInt t1)
@@ -260,11 +240,17 @@ and getExprType(e: expr) : typ =
         | [e]   -> getExprType(e)
         | e::es -> exprTypeOk(e); getExprType(ExprComma es))
     | ExprSizeOf _ -> typeInt
-    | ExprCast(t, e) ->
-        match getExprType(e) with
-        | TypeAggr _ -> typeErrorMsg("Cannot cast an aggregate")
-        | TypeBag  _ -> typeErrorMsg("Cannot cast a bag")
-        | _ -> t
+    | ExprCast(t, e) as e' ->
+        match unwrap(t), getExprType(e) with
+          (* 
+           * Casts from char* or char[] to string are allowed. See
+           * file lower.c, function stringConv().
+           *)
+        | TypeString, TypePtr(_, TypeInt(_, "char"))
+        | TypeString, TypeArray(TypeInt(_, "char"), _) -> t
+        | _, _ -> (try ignore(checkAssignTypes t (getExprType e)); t
+                   with AssignError _ -> 
+                     failwith ("Invalid cast: " ^ (exprToString e')))
   in
   unwrap(getExprTypeRaw e)
 
@@ -310,10 +296,8 @@ let returnOk(id: ident) (fe: funcEntry) : unit =
     | TypeFunc(t, _), (StatReturn e)::_ ->
         (try ignore(checkAssignTypes t (getExprType e))
         with AssignError _ -> 
-          failwith ("Function " ^ id ^ " must should return: " ^ 
-                    (typeToString t) ^
-                    ", but returns: " ^
-                    (typeToString(getExprType e))))
+          failwith ("Function " ^ id ^ " must return: " ^ (typeToString t) ^
+                    ", but returns: " ^ (typeToString(getExprType e))))
     | TypeFunc(t, _), _ ->
         failwith ("Missing return statement in function: " ^ id)
     | _ -> failwith "Not reached"
@@ -333,9 +317,7 @@ let typeCheckPass() : unit =
                              statTypeOk(fe.fbody) in
     let checkProbe(id, pe) = statTypeOk(pe.pbody) in
     if !verbose then Printf.printf "# Type-checking...\n";
-    autoDeclareVars := true;
     List.iter structOk tab.structs;
-    compilerPass checkFunc checkProbe;
-    autoDeclareVars := false
+    compilerPass checkFunc checkProbe
   with
     TypeError(s) -> Printf.eprintf "Type error: %s\n" s; exit 1

@@ -1,0 +1,39 @@
+prefix          = @prefix@
+exec_prefix     = @exec_prefix@
+bindir          = @bindir@
+srcdir          = @srcdir@
+builddir        = @builddir@
+INSTALL         = @INSTALL@
+INSTALL_PROGRAM = @INSTALL_PROGRAM@
+
+.PHONY: emmett install clean dist-clean
+
+DIST_SCRIPTS = \
+	$(srcdir)/bin/vprobe \
+	$(srcdir)/bin/vprobe-dwarffrob \
+	$(srcdir)/bin/vprobe-stackfilt \
+	$(srcdir)/bin/vprobe-stacks2dot \
+	$(srcdir)/bin/vprobe-stacksresolve \
+	$(srcdir)/bin/vprobe-stackvis \
+	$(srcdir)/bin/vprobe-tail
+
+emmett:
+	$(MAKE) -C emmett
+
+install: install-dist-scripts
+	$(MAKE) -C emmett install
+
+install-dist-scripts: $(DIST_SCRIPTS)
+	[ ! -d $(bindir) ] && mkdir -p $(bindir) || exit 0
+	$(INSTALL_PROGRAM) -m 0755 $(DIST_SCRIPTS) $(bindir)
+
+clean:
+	$(MAKE) -C emmett clean
+
+dist-clean: clean
+	rm -rf  autom4te.cache \
+		aclocal.m4 \
+		$(builddir)/Makefile \
+		$(builddir)/emmett/Makefile \
+		$(builddir)/config.log \
+		$(builddir)/config.status

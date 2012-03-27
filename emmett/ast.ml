@@ -28,6 +28,11 @@ type storage =
   | ClassStatic
   | ClassAuto
   | ClassRegister
+  | ClassPerThread
+  | ClassPerDomain
+  | ClassPerVM
+  | ClassPerVMK
+  | ClassPerHost
 
 type tyspec =
   | SpecSign     of string
@@ -69,7 +74,7 @@ type expr =
   | ExprStrConst   of string
   | ExprIntConst   of int64
   | ExprIdent      of ident
-  | ExprAddr       of expr
+  | ExprAddr       of mm * expr
   | ExprUnary      of op * expr
   | ExprBinary     of op * expr * expr
   | ExprCond       of expr * expr * expr
@@ -101,7 +106,7 @@ let rec exprToString : expr -> string = function
   | ExprStrConst(s)        -> s
   | ExprIntConst(n)        -> Int64.to_string n
   | ExprIdent(id)          -> id
-  | ExprAddr(e)            -> "& " ^ (exprToString e)
+  | ExprAddr(mm, e)         -> "& " ^ (exprToString e)
   | ExprUnary(op, e)       -> "(" ^ op ^ (exprToString e) ^ ")"
   | ExprBinary(op, e1, e2) -> "(" ^ (exprToString e1) ^ " " ^ op ^
                               " " ^ (exprToString e2) ^ ")"
@@ -182,6 +187,31 @@ let specToString : tyspec -> string = function
   | SpecString     -> "string"
   | SpecVoid       -> "void"
 
+let sclassToString : storage -> string = function
+  | ClassTypedef   -> "typedef"
+  | ClassExtern    -> "extern"
+  | ClassStatic    -> "static"
+  | ClassAuto      -> "auto"
+  | ClassRegister  -> "register"
+  | ClassPerThread -> "perthread"
+  | ClassPerDomain -> "perdomain"
+  | ClassPerVM     -> "pervm"
+  | ClassPerVMK    -> "pervmk"
+  | ClassPerHost   -> "perhost"
+
+(*
+ * astStrConcat -- a string concatenation routine.
+ *)
+let astStrConcat(l: string list) : expr =
+  let strip(s) = (String.sub s 1 (String.length(s) - 2)) in
+  let fullString = String.concat "" (List.map strip l) in
+  let totalLen = String.length(fullString) in
+  if totalLen > 255 then
+    failwith (sprintf "String is too long (%d characters): \"%s\""
+                      totalLen fullString)
+  else
+    ExprStrConst("\"" ^ fullString ^ "\"")
+
 (*
  * exprBinary, exprUnary -- same as ExprBinary and ExprUnary, but fold 
  * constants. Not recursive, so constants in subtrees must be already folded.
@@ -212,6 +242,10 @@ let exprBinary(op, e1, e2) =
                                  -> ExprIntConst(shift_left  i (to_int j))
   | ">>", ExprIntConst i, ExprIntConst j
                                  -> ExprIntConst(shift_right i (to_int j))
+
+  (* string concatenation. *)
+  | "+",  ExprStrConst s, ExprStrConst t -> astStrConcat [s;t]
+
   | _  -> ExprBinary(op, e1, e2)
 
 let exprUnary(op, e) =

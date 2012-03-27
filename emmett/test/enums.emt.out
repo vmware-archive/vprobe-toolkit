@@ -1,4 +1,0 @@
-(version 0.2)
-
- ;;;;;
-(vprobe VMM1Hz ( printf    "%d, %d, %d\n"  12  3  4 ))

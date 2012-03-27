@@ -1,0 +1,27 @@
+srcdir     = @srcdir@
+top_srcdir = @top_srcdir@
+builddir   = @builddir@
+HOSTOS	   = @HOST_OS@
+INSTALL    = @INSTALL@
+PKGROOT    = $(builddir)/pkgroot
+PKGDIR     = $(PKGROOT)/vprobe-toolkit
+PKGBIN     = $(PKGDIR)/usr/local/bin
+PMDOC      = $(srcdir)/vprobe-toolkit.pmdoc
+PKGMAKER   = @PACKAGEMAKER@
+
+ifneq ($(HOSTOS),Darwin)
+  $(error "You need a MacOS X (>= 10.4) host to build the package.")
+endif
+
+ifeq ($(PKGMAKER),)
+  $(error "Package Maker application was not found in this system.")
+endif
+
+vprobe-toolkit.pkg: $(PMDOC)/*.xml
+	$(INSTALL) -d -o root -g wheel $(PKGBIN)
+	$(INSTALL) -m 0755 -o root -g wheel $(top_srcdir)/bin/vprobe* $(PKGBIN)
+	$(INSTALL) -m 0755 -o root -g wheel $(top_srcdir)/emmett/emmett $(PKGBIN)
+	$(PKGMAKER) --doc $(PMDOC) --out $(builddir)/$@
+
+clean:
+	rm -rf $(PKGROOT) *.pkg *.mpkg

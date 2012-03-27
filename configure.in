@@ -1,0 +1,99 @@
+AC_PREREQ(2.59)
+AC_INIT([vprobe-toolkit], [2011], [vprobes@vmware.com])
+AC_CONFIG_MACRO_DIR([m4])
+AC_PROG_INSTALL
+
+# Check host
+host_os=`uname`
+host_rel=`uname -r`
+
+AC_SUBST(HOST_OS,[$host_os])
+AC_SUBST(HOST_REL,[$host_rel])
+
+if test "x$host_os" = "xDarwin"; then
+    # check Darwin version >= 8.0 (MacOS 10.4)
+    AX_COMPARE_VERSION([$host_rel],[ge],[8.0],[
+        # check if packagemaker is installed
+        pm_path="/Developer/usr/bin"
+        AC_CHECK_PROG([PACKAGEMAKER],packagemaker,
+                      [$pm_path/packagemaker],
+                      [no],[$pm_path])
+    ],[])
+fi
+
+AX_WITH_PYTHON
+if test "x$PYTHON" = "x"; then
+     AC_MSG_ERROR( [Python not found. Use --with-python to specify path to python binary] )
+else
+     AC_MSG_CHECKING($PYTHON version >= 2.5)
+     if test [`$PYTHON -c "import sys; print sys.version[:3] > \"2.5\" and \"ok\" or \"no\""` = "ok"]; then
+        AC_MSG_RESULT(ok)
+     else
+        AC_MSG_RESULT(no)
+        AC_MSG_ERROR([Python version is too old, need version 2.5 or above.])
+     fi
+fi
+
+AC_ARG_WITH([ocamljava],
+    [AS_HELP_STRING([--with-ocamljava=PATH],
+        [ocamljava toolchain (cadmium) path prefix (default=no)])],
+    [ocamljava_root=$withval],
+    [with_ocamljava=no]) 
+
+AC_PROG_JAVA
+
+AS_IF([test "x$with_ocamljava" != xno], 
+    [AC_CHECK_PROG(OCAMLJAVA,ocamljava,
+                   [$ocamljava_root/bin/ocamljava],
+                   [no],
+                   [$ocamljava_root/bin])
+     AC_CHECK_PROG(OCAMLC,ocamlc,
+                   [$ocamljava_root/bin/ocamlc],
+                   [no],
+                   [$ocamljava_root/bin])
+     AC_CHECK_PROG(OCAMLLEX,ocamllex,
+                   [$ocamljava_root/bin/ocamllex],
+                   [no],
+                   [$ocamljava_root/bin])
+     AC_CHECK_PROG(OCAMLYACC,ocamlyacc,
+                   [$ocamljava_root/bin/ocamlyacc],
+                   [no],
+                   [$ocamljava_root/bin])
+     AC_CHECK_PROG(OCAMLDEP,ocamldep,
+                   [$ocamljava_root/bin/ocamldep],
+                   [no],
+                   [$ocamljava_root/bin])
+     if test "$OCAMLJAVA" = "no"; then
+        AC_MSG_ERROR([Please install the OCaml parser generator])
+     fi
+
+     if test "x$JAVA" = "x"; then
+        AC_MSG_ERROR([Need java to use ocamljava package])
+     fi
+    ],
+    [AC_PROG_OCAML
+     AC_PROG_OCAMLLEX
+     AC_PROG_OCAMLYACC]
+)
+
+if test "$OCAMLC" = "no"; then
+    AC_MSG_ERROR([Please install the OCaml compiler])
+fi
+
+if test "$OCAMLLEX" = "no"; then
+    AC_MSG_ERROR([Please install the OCaml lexer generator])
+fi
+
+if test "$OCAMLYACC" = "no"; then
+    AC_MSG_ERROR([Please install the OCaml parser generator])
+fi
+
+if test "$OCAMLDEP" = "no"; then
+    AC_MSG_ERROR([Please install the OCaml dependency generator])
+fi
+
+
+AC_CONFIG_FILES([Makefile 
+                 emmett/Makefile
+                 installer/macos/Makefile]) 
+AC_OUTPUT

@@ -14,6 +14,7 @@ open Defaults
 open Globals
 open Ast
 open Symtab
+open Domain
 open Type
 open Predef
 open Printf
@@ -138,7 +139,6 @@ let renameId(id: ident) : ident =
   | _ when isReservedName(id) -> sprintf "~%s" id
   | _ -> id
 
-
 (*
  * exprToVP -- convert an Emmett expression to a VP expression.
  *)
@@ -186,36 +186,61 @@ let rec statToVP : stat -> vpExpr = function
 
 (* 
  * Auto-aggregation.
+ * 
+ * Emits probes to automatically log aggregates once a second in
+ * a given environment. Note that aggregates with storage class
+ * "perhost" need to be logged in the VMK environment only.
  *)
-let autoAggregate() : unit =
-  let test = ExprBinary("==", ExprIdent defaultCpuVar, exprIntConst 0) in
-  let foldFunc acc (id, ve) = 
-    match ve.vtyp with
-    | TypeAggr _ -> StatExpr(ExprCall("logaggr",   [ExprIdent id])) :: 
-        StatExpr(ExprCall("clearaggr", [ExprIdent id])) :: acc
-    | _ -> acc in
-  let list = List.fold_left foldFunc []  tab.vars in
-  let auto = StatIf(test, StatBlock list) in
-  ignore(symtabProbeInsert default1HzProbe [] auto)
+let logStatements (env: string): string =
+  let env' = fst(domainParts(env)) in
+  let log id = sprintf "(logaggr %s) (clearaggr %s) " id id in
+  let foldFunc logstats (id, ve): string =
+    match ve.vtyp, ve.vstorage, env' with
+    | TypeAggr _, ClassPerHost, "VMK"
+    | TypeAggr _, ClassPerVMK, "VMK"
+    | TypeAggr _, ClassPerVM, "VM"
+    | TypeAggr _, ClassPerDomain, "VMK"
+    | TypeAggr _, ClassPerDomain, "VM"
+        -> log (renameId id) ^ logstats
+    | _ -> logstats
+  in
+  List.fold_left foldFunc "" tab.vars
+
+let vpEmitAutoAggr (env: string): unit =
+  let stats = logStatements env in
+  if String.length stats > 0 then
+    (printf "\n; Auto-generated logaggr code\n";
+     printf "(vprobe %s\n" (domainOneHzProbe env);
+     printf "   (cond ((== %s 0) (do %s)))\n" (domainCPUVar env) stats;
+     printf ")\n\n")
+
+let inCurEnv (doms: string list): bool =
+  List.exists (fun d -> domainMatchesEnv d (symtabCurEnv())) doms
 
 (*
  * Emit VP code for all functions and probes.
  *)
 let vpEmitVar(id, ventry) : unit =
   let id = renameId id in
+  let shared = ventry.vstorage == ClassPerHost in
   if not ventry.vpredef then
     match ventry.vtyp, ventry.init with
     | TypePtr _, None
-    | TypeInt _, None     -> printf "(definteger %s)\n" id
+    | TypeInt _, None
+       -> printf "(definteger %s)\n" id
     | TypePtr _, Some(ExprIntConst n) 
     | TypeInt _, Some(ExprIntConst n) 
-                          -> printf "(definteger %s %s)\n" id 
-                                    (Int64.to_string n)
-    | TypeString, None    -> printf "(defstring %s)\n" id
+       -> printf "(definteger %s %s)\n" id (Int64.to_string n)
+    | TypeString, None
+       -> printf "(defstring %s)\n" id
     | TypeString, Some(ExprStrConst s)
-                          -> printf "(defstring %s %s)\n" id s
-    | TypeBag(n), None    -> printf "(defbag %s %d)\n" id n
-    | TypeAggr(i,s), None -> printf "(defaggr %s %d %d)\n" id i s
+        -> printf "(defstring %s %s)\n" id s
+    | TypeBag(n), None
+        -> if shared then (printf "(defbag %s %d 1)\n" id n)
+                     else (printf "(defbag %s %d)\n"   id n)
+    | TypeAggr(i,s), None
+        -> if shared then (printf "(defaggr %s %d %d 1)\n" id i s)
+                     else (printf "(defaggr %s %d %d)\n"   id i s)
     | _ -> failwith "Not reached"
 
 let vpEmitLocalsFunc(id, fentry) : unit =
@@ -226,7 +251,7 @@ let vpEmitLocalsProbe(id, pentry) : unit =
   List.iter vpEmitVar (List.rev pentry.plocals)
 
 let vpEmitFunc(id, fentry) : unit =
-  if not fentry.fpredef then
+  if not fentry.fpredef && inCurEnv fentry.fdoms then
     let func(id, _) = renameId(id) in
     let parms = String.concat " " (List.map func fentry.fparms) in
     let vp    = statToVP fentry.fbody in
@@ -236,13 +261,34 @@ let vpEmitFunc(id, fentry) : unit =
 let vpEmitProbe(id, pentry) : unit =
   let vp   = statToVP pentry.pbody in
   let body = vpToString 1 (simplifyVP vp) in
-  printf "(vprobe %s\n%s)\n" (symtabProbeName id) body
+  if domainMatchesEnv pentry.pdom (symtabCurEnv()) then
+    printf "(vprobe %s\n%s)\n" (symtabProbeName id) body
 
 let vpEmitPass() : unit =
+  let emitTargSpec env targ =
+    if env = "VMK" then printf "@VMK\n" 
+    else printf "@%s=%s\n" env targ
+  in
+  let emitEnv env targ emitSpec =
+    symtabSetCurEnv env;
+    if emitSpec then emitTargSpec env targ;
+    printf "(version %s)\n" version;
+    List.iter vpEmitVar (List.rev Symtab.tab.vars);
+    compilerPass vpEmitLocalsFunc vpEmitLocalsProbe;
+    compilerPass vpEmitFunc vpEmitProbe;
+    if !autoAggr then vpEmitAutoAggr env
+  in
   if !verbose then printf "# Emitting VP code...\n\n";
-  printf "(version %s)\n" version;
-  List.iter vpEmitVar (List.rev Symtab.tab.vars);
-  compilerPass vpEmitLocalsFunc vpEmitLocalsProbe;
-  if !autoAggr then autoAggregate();
-  compilerPass vpEmitFunc vpEmitProbe
-    
+  (* 
+   * If there are shared variables in a multidomain script, we need to
+   * generate a VP script for the VMK domain even if there is no
+   * target spec for VMK.
+   *)
+  if symtabHasSharedVars() && List.length tab.targs > 0 &&
+     not (List.mem "VMK" (List.map fst tab.targs)) then
+    tab.targs <- ("VMK", "") :: tab.targs;
+  if List.length tab.targs > 0 then 
+    List.iter (fun (e,t) -> emitEnv e t true) tab.targs
+  else
+    emitEnv (envFromDomain tab.defdom) "" false
+

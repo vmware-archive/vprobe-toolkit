@@ -49,7 +49,7 @@ let rec right(e: expr) : expr =
 
   | ExprCast(t, e1)         -> stringConv t e1
 
-  | ExprAddr(e1)            -> snd(left e1)
+  | ExprAddr(mm, e1)        -> snd(left e1)
 
   | ExprUnary(op, e1)       -> exprUnary(op, right e1)
 
@@ -74,6 +74,16 @@ let rec right(e: expr) : expr =
               exprBinary(op, strcmp, ExprIntConst(zero))
 
       |  _ -> exprBinary(op, right e1, right e2))
+
+  (*
+   * Rewrite: assert(cond, fmt, par, ..)
+   * as:      assert(cond, (sprintf(tmp, fmt, par, ..), tmp))
+   *)
+  | ExprCall("assert", cond::fmt::par::rest) ->
+      let tmp  = freshTemp() in
+      let args = tmp::fmt::par::rest in
+      let fmtExpr = ExprComma([ExprCall("sprintf", args); tmp]) in
+      right(ExprCall("assert", [cond; fmtExpr]))
     
   | ExprCond(c, t, f)       -> ExprCond(right c, right t, right f)
   | ExprComma(l)            -> ExprComma(List.map right l)
