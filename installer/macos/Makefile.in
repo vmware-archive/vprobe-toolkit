@@ -17,7 +17,7 @@ ifeq ($(PKGMAKER),)
   $(error "Package Maker application was not found in this system.")
 endif
 
-vprobe-toolkit.pkg:
+vprobe-toolkit.pkg: $(PMDOC)/*.xml
 	$(INSTALL) -d -o root -g wheel $(PKGBIN)
 	$(INSTALL) -m 0755 -o root -g wheel $(top_srcdir)/bin/vprobe* $(PKGBIN)
 	$(INSTALL) -m 0755 -o root -g wheel $(top_srcdir)/emmett/emmett $(PKGBIN)
