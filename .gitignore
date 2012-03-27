@@ -11,4 +11,6 @@ emmett/emmett
 emmett/.depend
 emmett/lexer.ml
 emmett/parser.ml
+installer/macos/pkgroot
+installer/macos/vprobe-toolkit.pkg
 .DS_Store
