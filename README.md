@@ -29,6 +29,11 @@ This toolkit is compatible with the following products:
 * [VMware Workstation][2] 8
 * [VMware Fusion][3] 4.0, 4.0.1, 4.0.2, 4.1.0, 4.1.1
 
+Starting in VMware Workstation 9 (and VMware Fusion 5), the `vprobe` tool and
+Emmett compiler are bundled with VMware Workstation and VMware Fusion. Please
+use the bundled versions instead of the version in this toolkit. The cookbook
+and utility scripts may still be useful, however.
+
 [2]:http://www.vmware.com/products/workstation/
 [3]:http://www.vmware.com/products/fusion/
 
