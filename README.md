@@ -19,7 +19,7 @@ primitive VP language native to VProbes. It includes,
 
 ## License
 
-See License.txt
+See License.txt (roughly the 3-clause BSD license).
 
 
 ## Compatibility
