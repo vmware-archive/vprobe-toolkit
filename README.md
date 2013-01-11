@@ -86,7 +86,7 @@ This will vary depending on your Linux distribution and package manager.
 Before you use the toolkit you must enable VProbes and verify that it is
 working correctly. VProbes must be both enabled in a system wide configuration
 file for your installation of VMware Workstation (on Linux) or VMware Fusion
-(on MacOS X), and 
+(on MacOS X), and in a per-VM configuration file.
 
 First, you need to enable VProbes globally for your installation of VMware
 Workstation (on Linux) or VMware Fusion (on Mac OS X).
