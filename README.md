@@ -11,10 +11,11 @@ VProbes. It allows you to write instrumentation scripts using a C-like
 high-level language called Emmett which is a replacement for the more
 primitive VP language native to VProbes. It includes,
 
-1. Source code for the Emmett compiler (emmett).
-2. Example VProbes scripts written in Emmett (cookbook).
+1. Source code for the Emmett compiler (`emmett`).
+2. Example VProbes scripts written in Emmett (`cookbook`).
+3. Some VProbes libraries written in Emmett (`preload`).
 3. Some sample scripts that monitor interesting events in Linux
-   guests (bin).
+   guests (`bin`).
 
 
 ## License
@@ -167,6 +168,14 @@ As a quick example, here's a one-liner that prints something every time
 the VM sends a packet on the virtual NIC.
 
     vprobe -c 'MAC_SendPacket { printf("Sending a packet!\n"); }' <path/to/vmx>
+
+### Using the sample scripts
+
+The `cookbook/` directory contains a variety of sample scripts that you can
+build off of.
+
+The `preload/` directory contains useful library functions that you may want to
+include from your scripts.
 
 ## Support
 
