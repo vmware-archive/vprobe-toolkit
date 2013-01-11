@@ -177,7 +177,11 @@ build off of.
 The `preload/` directory contains useful library functions that you may want to
 include from your scripts. In working with Windows guests, you may find
 `preload/pdb2structs.py` to be helpful --- it turns Windows .pdb files into
-Emmett structure definitions.
+Emmett structure definitions. In working with Linux guests, you may find
+`preload/linux-module/` to be helpful --- it has an expanded and updated
+version of the `preload/linux*-2.6-preload.emt` preloads, using a custom Linux
+kernel module to expose the offsets within structures (see that directory for
+details).
 
 ## Support
 

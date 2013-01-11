@@ -1,0 +1,26 @@
+Contents:
+
+- guest-top.emt
+   Sample emmett script that prints pid and process name of the tasks
+   that are running in the VM.
+- linux-processes.emt
+   Provides interface to get pid, process name and tid of the currently
+   running process for Linux, common for both 32 and 64 bit.
+- vprobe-offsets.c
+   Linux kernel module, which provides offset information about some fields
+   in the kernel data structure.
+- fetch-offsets
+   Script to copy the module to another machine with scp, compile it, and
+   copy the results back.
+
+Usage:
+
+1. Generate and fetch linux-offsets.emt from your desired Linux guest
+
+   ./fetch-offsets <yourVM>
+
+2. Run the guest-top.emt script against your VM:
+
+   On ESX:     vprobe -m <vmid>     guest-top.emt
+   On hosted:  vprobe <path-to-vmx> guest-top.emt
+

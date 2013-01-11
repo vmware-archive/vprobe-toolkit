@@ -1,0 +1,164 @@
+/*
+ * Provides interface to get pid, process name and tid of the currently
+ * running process, common for both 32 and 64 bit.
+ *
+ * linux-offsets.emt :
+ *    Defines offsets of some fields in the Linux kernel data structures.
+ *    These offsets come from the output of /proc/vprobe-offsets within
+ *    the guest.
+ */
+
+#include "linux-offsets.emt"
+
+/*
+ * Structure definitions
+ *
+ * These offsets can be retrieved by looking at /proc/vprobe-offsets in the
+ * guest with the vprobe-offsets kernel module loaded. The comment next
+ * to each field indicates which field you want.
+ */
+
+struct list_head {
+    struct list_head *next, *prev;
+};
+
+struct qstr {
+    unsigned int hash;
+    unsigned int len;
+    const unsigned char *name;
+};
+
+#ifdef HAVE_LINUX_FILES
+struct dentry {
+    @__OFF_DENTRY_PARENT struct dentry *d_parent;    /* dentry->d_parent */
+    @__OFF_DENTRY_NAME struct qstr d_name; /* dentry->d_name */
+}
+
+struct path {
+    struct vfsmount *mnt;
+    struct dentry *dentry;
+};
+
+struct file {
+    @__OFF_FILE_PATH struct path f_path; /* file->f_path */
+}
+
+struct vfsmount { };
+
+struct mount {
+    struct list_head mnt_hash;
+    struct mount *mnt_parent;    /* fs we are mounted on */
+    struct dentry *mnt_mountpoint;  /* dentry of mountpoint */
+};
+
+struct mm_struct {
+    @__OFF_EXE struct file * exe_file; /* mm_struct_exe */
+}
+#endif
+
+struct task_struct {
+    @__OFF_TGID int tgid; /* tgid */
+    @__OFF_PID  int pid; /* pid */
+    @__OFF_COMM char comm[16]; /* comm */
+    @__OFF_PARENT struct task_struct *parent; /* parent */
+    #ifdef HAVE_LINUX_FILES
+    @__OFF_MM   struct mm_struct *mm; /* mm */
+    #endif
+};
+
+struct current_thread {
+   @__OFF_TASK struct task_struct *current; /* current task_struct */
+};
+
+/*
+ * guestload --
+ * guestloadstr --
+ *   Wrappers around getguest* that return 0 for reads of the null page.
+ */
+void *
+guestload(void **addr) {
+   return addr < (1 << 12) ? 0 : *addr;
+}
+
+string
+guestloadstr(char *addr) {
+   return addr < (1 << 12) ? "<NULL>" : (string)addr;
+}
+
+struct task_struct *
+curprocptr() {
+   struct current_thread *thrptr;
+   thrptr = __CURTHRPTR;
+   return guestload(&thrptr->current);
+}
+
+string
+curprocname() {
+   return guestloadstr(curprocptr()->comm);
+}
+
+int
+curtid() {
+   return curprocptr()->pid;
+}
+
+int
+curpid() {
+   return curprocptr()->tgid;
+}
+
+int
+curppid() {
+   return curprocptr()->parent->tgid;
+}
+
+/* File-handling related */
+
+string get_qstr_name(struct qstr * str) {
+    string ret;
+    getgueststr(ret, str->len, str->name);
+    return ret;
+}
+
+#ifdef HAVE_LINUX_FILES
+struct mount
+*real_mount(struct vfsmount *mnt)
+{
+    return (struct mount *) ((char*)mnt - __OFF_VFSMOUNT);
+}
+
+string path_to_ascii(struct mount * mnt, struct dentry * dentry)
+{
+    string ret, parent_path;
+    if(dentry == dentry->d_parent)
+    {
+        if(mnt == mnt->mnt_parent || mnt->mnt_parent == NULL)
+        {
+            ret = "";
+        } else {
+            ret = path_to_ascii(mnt->mnt_parent, mnt->mnt_mountpoint);
+        }
+    } else {
+        parent_path = path_to_ascii(mnt, dentry->d_parent);
+        sprintf(ret, "%s/%s", parent_path, get_qstr_name(&dentry->d_name));
+    }
+    return ret;
+}
+
+string get_file_path(struct file * file) {
+    string path;
+    struct mount * mnt;
+    struct dentry * dentry;
+    try {
+        mnt = real_mount(file->f_path.mnt);
+        dentry = file->f_path.dentry;
+        path = path_to_ascii(mnt, dentry);
+    } catch {
+        printf("Caught an exception:\n"
+          "name = %s\n"
+          "description = %s\n", excname(), excdesc());
+        path = "<unknown>";
+    }
+    return path;
+}
+#endif

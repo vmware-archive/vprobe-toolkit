@@ -1,0 +1,109 @@
+* File paths
+** struct file and struct path (Dec 2006)
+*** struct file
+
+struct path f_path
+In include/linux/fs.h
+
+Unchanged since 0f7fc9e4 in Dec 2006 (when struct path was added).
+Before that, unchanged since the start of time (^1da177e in April
+2005).
+
+*** struct path
+
+struct vfsmount *mnt
+struct dentry *dentry
+In include/linux/path.h
+
+Unchanged since c5e725f3 in Feb 2008 (when it was moved into its own
+header).  Before that, unchanged since 346f20ff6 in Dec 2006, which
+was two commits before struct file started to use it.
+
+*** Conclusion
+
+I see three approaches here.
+
+One is to use the #define'd f_dentry and f_vfsmnt "members" and ignore
+the existence of struct path everywhere.
+
+Alternatively, we could pretend that struct path existed even way back
+when, and fake up a "struct path" even for kernel versions before it
+existed. It looks like even when the git repo starts, dentry and
+vfsmount were adjacent, so this could work. Unfortunately, while they
+may have been adjacent, they weren't in the same order...
+
+Finally, we could make the Emmett aware of this distinction as well.
+
+The first version with struct path f_path existing is 2.6.20.
+
+** struct vfsmount / struct mount (Dec 2011)
+
+c. Dec 2011, most contents of struct vfsmount were moved to struct
+mount. See, e.g., https://lkml.org/lkml/2011/12/7/707, and the commits
+leading up to c63181e6b6df89176b3984c6977bb5ec03d0df23. This is not
+included in linux-3.2, but is included in linux-3.3 and later.
+
+Linux 3.3 and later, struct mount (fs/mount.h) contains the fields we
+need. In Linux 3.2 and earlier, struct vfsmount (in
+include/linux/mount.h) directly contains the fields we need.
+
+The following fields are relevant:
+struct list_head mnt_hash; /* not used; included to avoid exporting an offset */
+struct mount *mnt_parent;
+struct dentry *mnt_mountpoint;
+struct vfsmount mnt;
+(used without exporting offsets)
+
+Other than that, the structure hasn't changed interestingly since the
+start of time (^1da177e in April 2005).
+
+We're going to want to output the offset between the struct vfsmount
+pointer and the struct mount (0 for 3.2 and earlier). Additionally,
+we'll need to output the offset of the *mnt_parent and *mnt_mountpoint
+within the struct {vfs,}mount.
+
+*** struct list_head (April 2005)
+
+Unchanged structure (except for moving from include/linux/list.h to
+include/linux/types.h) since the start of time.
+
+** No complications (April 2005)
+
+*** struct dentry
+
+struct dentry *d_parent
+struct qstr d_name
+In include/linux/dcache.h
+
+Unchanged since ceb5bdc2, 44a7d7a8, 31e6b01f in Jan 2011 (when RCU
+stuff was added).
+
+Our particular elements don't appear to have been touched since the
+start of time (^1da177e in April 2005), but it should be verified that
+RCU doesn't cause issues.
+
+*** struct qstr
+
+Structure used as defined in include/linux/dcache.h (no offsets exported).
+
+Unchanged since the start of time (^1da177e in April 2005).
+
+* Binary access
+
+** struct task_struct (April 2005)
+
+struct mm_struct * mm
+In include/linux/sched.h
+
+The field is unchanged since the start of time (^1da177e in April
+2005), though the structure certainly has changed.
+
+** struct mm_struct (April 2008)
+
+struc t file * exe_file
+In include/linux/mm_types.h
+
+Added in 925d1c40 (April 2008). Before that, fs/proc/task_mmu.c would
+read mm->mmap.vm_file (or mm->context.vmlist, ->next repeatedly,
+->vma->vm_file). I'm tempted to conclude if you want to use this on a
+kernel predating April 2008, you're out of luck.

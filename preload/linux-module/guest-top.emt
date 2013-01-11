@@ -1,0 +1,15 @@
+/************************************************************
+ * Copyright 2007-2010 VMware, Inc.  All rights reserved.
+ * -- VMware Confidential
+ ************************************************************/
+
+#include "linux-processes.emt"
+
+aggr ticks[1][1];
+
+VMM:TIMER:10msec { ticks[curpid(), curprocname()]++; }
+
+VMX:VMX1Hz {
+   logaggr(ticks);
+   clearaggr(ticks);
+}

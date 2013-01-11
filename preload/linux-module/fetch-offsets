@@ -1,0 +1,24 @@
+#!/bin/sh -e
+
+basedir="`dirname "$0"`"
+host=$1
+
+if [ -z "$host" ]; then
+    echo "Usage: $0 host"
+    exit 1
+fi
+
+echo "Copying module to $host..."
+scp -r "$basedir/../linux-module" "root@$host:/tmp/"
+
+echo
+echo "Building module and generating offsets..."
+ssh "root@$host" "cd /tmp/linux-module && make"
+
+echo
+echo "Fetching offsets..."
+scp "root@$host:/tmp/linux-module/linux-offsets.emt" "$basedir"
+
+echo
+echo "Done! You should now be able to use guest-top.emt for a quick demo,"
+echo "or use linux-processes.emt to build your own scripts."
