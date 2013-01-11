@@ -175,7 +175,9 @@ The `cookbook/` directory contains a variety of sample scripts that you can
 build off of.
 
 The `preload/` directory contains useful library functions that you may want to
-include from your scripts.
+include from your scripts. In working with Windows guests, you may find
+`preload/pdb2structs.py` to be helpful --- it turns Windows .pdb files into
+Emmett structure definitions.
 
 ## Support
 

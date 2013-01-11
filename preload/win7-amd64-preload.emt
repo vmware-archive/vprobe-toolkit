@@ -1,0 +1,144 @@
+/*
+ * This also requires that win7-amd64-offsets.emt exists. It can be generated
+ * with
+ * ./pdb2structs.py ntkrnlmp.pdb < win7-structs.txt > win7-amd64-offsets.emt
+ * (where ntkrnlmp.pdb is obtained from your Windows install).
+ *
+
+ * This preload does not use guest symbols. However, users considering setting
+ * breakpoints or otherwise using guest symbols should be aware that Win7 uses
+ * ASLR for the kernel, so rebooting the guest requires getting fresh symbols.
+ */
+
+memmodel guest64;
+
+#include "win7-amd64-offsets.emt"
+
+typedef struct _UNICODE_STRING UNICODE_STRING;
+typedef struct _EPROCESS EPROCESS;
+typedef struct _ETHREAD ETHREAD;
+typedef struct _KTHREAD KTHREAD;
+typedef struct _KPCR KPCR;
+
+/*
+ * ucs2ascii --
+ *  Convert a UCS2 string containing only ASCII characters to an ASCII emmett string
+ */
+string ucs2ascii(UNICODE_STRING *str) {
+    int i;
+    string ret;
+    /* reset the string to empty on each call (PR 707389) */
+    ret = "";
+    for(i = 0; i < str->Length; i += 2) {
+        ret = ret + (string)&((char*)str->Buffer)[i];
+    }
+    return ret;
+}
+
+/*
+ * guestload --
+ * guestloadstr --
+ *   Wrappers around getguest* that return 0 for reads of the null page.
+ */
+int
+guestload(int *addr) {
+   return addr < (1 << 12) ? 0 : *addr;
+}
+
+long
+guestloadlong(long *addr) {
+   return addr < (1 << 12) ? 0 : *addr;
+}
+
+string
+guestloadstr(char *addr) {
+   return addr < (1 << 12) ? "<NULL>" : (string)addr;
+}
+
+/*
+ * Initialize offsets.
+ */
+
+int calcPcbOffset() {
+   struct _EPROCESS *null_process = 0;
+   int pcbOffset;
+   pcbOffset = (int)(&null_process->Pcb);
+   return pcbOffset;
+}
+
+int calcTcbOffset() {
+   struct _ETHREAD *null_thread = 0;
+   int tcbOffset;
+   tcbOffset = (int)(&null_thread->Tcb);
+   return tcbOffset;
+}
+
+VMMLoad
+{
+   pcbOffset = calcPcbOffset();
+   if(pcbOffset != 0) {
+      printf("Warning: Pcb is not at the start of the _EPROCESS structure.\n"
+             "This may break curprocptr() and related primitives.\n");
+   }
+   tcbOffset = calcTcbOffset();
+   if(tcbOffset != 0) {
+      printf("Warning: Tcb is not at the start of the _ETHREAD structure.\n"
+             "This may break curethrptr() and related primitives.\n");
+   }
+}
+
+KPCR *
+kpcr() {
+   return (struct KPCR*) GSBASE >= 0x100000000 ? GSBASE : KERNELGSBASE;
+}
+
+KTHREAD *
+curthrptr() {
+   return kpcr()->Prcb.CurrentThread;
+}
+
+ETHREAD *
+curethrptr() {
+   /* This assumes that ETHREAD.Tcb remains at offset 0. */
+   return (ETHREAD*)kpcr()->Prcb.CurrentThread;
+}
+
+EPROCESS *
+curprocptr() {
+   /* This assumes that EPROCESS.Pcb remains at offset 0. */
+   return (EPROCESS*)curthrptr()->Process;
+}
+
+/*
+ * curprocname --
+ * curpid --
+ * curtid --
+ * curppid --
+ *   Return the current name and pid/tid/ppid of the current process.
+ */
+string
+curprocname () {
+   return (string)curprocptr()->ImageFileName;
+}
+
+int
+curpid () {
+   return curethrptr()->Cid.UniqueProcess;
+}
+
+int
+curtid () {
+   return curethrptr()->Cid.UniqueThread;
+}
+
+long
+curppid () {
+   return curprocptr()->InheritedFromUniqueProcessId;
+}
+
+UNICODE_STRING *
+thread_image_file(KTHREAD *thread)
+{
+   /* This assumes that EPROCESS.Pcb remains at offset 0. */
+   return &((EPROCESS*)thread->Process)->SeAuditProcessCreationInfo.ImageFileName->Name;
+}

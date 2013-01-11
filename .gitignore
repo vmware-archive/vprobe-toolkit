@@ -14,3 +14,4 @@ emmett/parser.ml
 installer/macos/pkgroot
 installer/macos/vprobe-toolkit.pkg
 .DS_Store
+preload/win7-amd64-offsets.emt
