@@ -3,15 +3,14 @@
 # pdb2structs.py
 #
 # A utility that extracts structures from a .pdb file (Windows debugging
-# information).
+# information). Requires that you have "PDBParse" (available at
+# http://code.google.com/p/pdbparse)
 #
 # pdb2structs.py accepts a .pdb file (Windows debugging information) and a list
 # of structure fields, and outputs an Emmett file that defines requested
 # structures and fields within the structures. A user can request all fields in
 # a structure, or select just a handful of them. The generated file will use
 # the proper offsets to make an Emmett sparse structure.
-#
-# See also extractVmkTypes.py for a similar script to find VMkernel offsets.
 #
 # Usage: pdb2structs.py debuginfo.pdb < fields-needed.txt
 #
